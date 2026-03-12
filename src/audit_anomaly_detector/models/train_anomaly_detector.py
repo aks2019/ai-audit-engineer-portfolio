@@ -26,6 +26,9 @@ from sklearn.ensemble import IsolationForest
 from xgboost import XGBRegressor
 
 from src.audit_anomaly_detector.features.engineer_features import RISK_FEATURE_COLUMNS
+from src.audit_anomaly_detector.database.postgres_connector import (
+    save_flagged_to_postgres,
+)
 
 
 PROCESSED_PATH = Path("data") / "processed" / "vendor_payments_processed.csv"
@@ -257,6 +260,13 @@ def main() -> None:
         ]
     ].copy()
     flagged_out.to_csv(FLAGGED_PATH, index=False)
+
+    # Also persist flagged rows into PostgreSQL audit table, if reachable.
+    try:
+        inserted = save_flagged_to_postgres(flagged_out)
+        print(f"Data saved to PostgreSQL audit table (rows inserted: {inserted}).")
+    except Exception as exc:  # noqa: BLE001 - safe to log generic DB error here
+        print(f"Warning: could not save to PostgreSQL ({exc}).")
 
     # ------------------------------------------------------------------
     # 7. Print audit-friendly outputs
