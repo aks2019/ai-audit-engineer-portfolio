@@ -205,7 +205,7 @@ def main() -> None:
     # Use CSV content with .xlsx extension for easy Excel consumption without extra dependencies.
     download_df = df_view[available_cols].copy()
     buffer = io.StringIO()
-    download_df.to_csv(buffer, index=False)
+    download_df.to_excel(buffer, index=False)
     st.download_button(
         label="Download Flagged Transactions as Excel",
         data=buffer.getvalue(),
