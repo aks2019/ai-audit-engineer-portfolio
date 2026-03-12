@@ -1,0 +1,11 @@
+transaction_id,vendor_name,amount,anomaly_score,anomaly_probability,risk_explanation
+T109590,Vendor_046,45872599.15273704,1,0.968310861786087,Flagged because payment sits in the highest 5% of all vendor payments + amount is 341.5× the vendor's historical average
+T109698,Vendor_149,12445106.623596076,1,0.9043266832896569,Flagged because payment sits in the highest 5% of all vendor payments + amount is 253.6× the vendor's historical average
+T103824,Vendor_118,35737489.17927531,1,0.9500373577212596,Flagged because payment sits in the highest 5% of all vendor payments + amount is 252.0× the vendor's historical average
+T103239,Vendor_007,37993592.19932508,1,0.9819929973995758,Flagged because payment sits in the highest 5% of all vendor payments + amount is 732.2× the vendor's historical average
+T102566,Vendor_160,21877445.17558703,1,0.9221182930771957,Flagged because payment sits in the highest 5% of all vendor payments + amount is 202.3× the vendor's historical average
+T109630,Vendor_005,16336862.866607895,1,0.9192360436463126,Flagged because payment sits in the highest 5% of all vendor payments + amount is 392.6× the vendor's historical average
+T109608,Vendor_094,40607838.49045888,1,0.9700894566916619,Flagged because payment sits in the highest 5% of all vendor payments + amount is 556.4× the vendor's historical average
+T103300,Vendor_127,35451318.698071,1,0.9506238392917966,Flagged because payment sits in the highest 5% of all vendor payments + amount is 210.5× the vendor's historical average
+T101197,Vendor_196,33030400.737316992,1,0.9435991380592555,Flagged because payment sits in the highest 5% of all vendor payments + amount is 203.4× the vendor's historical average
+T105649,Vendor_196,46068121.32430971,1,0.9915739874596903,Flagged because payment sits in the highest 5% of all vendor payments + amount is 680.0× the vendor's historical average
