@@ -64,7 +64,7 @@ def main() -> None:
         layout="wide",
     )
 
-    st.title("AI Vendor Payment Anomaly Detector - Built by Ashok Sharma")
+    st.title("AI Vendor Payment Anomaly Detector - Built by Ashok Kumar Sharma")
     st.caption("Run with: `streamlit run app.py`")
 
     flagged, processed, merged = load_data()
@@ -205,7 +205,7 @@ def main() -> None:
     # Use CSV content with .xlsx extension for easy Excel consumption without extra dependencies.
     download_df = df_view[available_cols].copy()
     buffer = io.StringIO()
-    download_df.to_csv(buffer, index=False)
+    download_df.to_excel(buffer, index=False)
     st.download_button(
         label="Download Flagged Transactions as Excel",
         data=buffer.getvalue(),
