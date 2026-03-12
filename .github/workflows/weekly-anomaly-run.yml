@@ -1,0 +1,36 @@
+name: Weekly AI Audit Run
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'   # Every Sunday at 9:00 AM IST (3:00 UTC)
+  workflow_dispatch:      # Allows manual trigger too
+
+jobs:
+  run-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy scikit-learn xgboost shap joblib
+
+      - name: Run Anomaly Detector
+        run: python run_training.py
+
+      - name: Commit results (optional)
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add data/results/flagged_transactions.csv data/audit.db
+          git commit -m "Weekly AI Audit Run - $(date)" || echo "No changes"
+          git push
+        continue-on-error: true
