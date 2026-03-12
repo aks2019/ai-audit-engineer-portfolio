@@ -64,7 +64,7 @@ def main() -> None:
         layout="wide",
     )
 
-    st.title("AI Vendor Payment Anomaly Detector - Built by Ashok Sharma")
+    st.title("AI Vendor Payment Anomaly Detector - Built by Ashok Kumar Sharma")
     st.caption("Run with: `streamlit run app.py`")
 
     flagged, processed, merged = load_data()
