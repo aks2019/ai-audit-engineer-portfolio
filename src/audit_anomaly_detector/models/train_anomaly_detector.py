@@ -24,7 +24,14 @@ from sklearn.ensemble import IsolationForest
 from xgboost import XGBRegressor
 
 from src.audit_anomaly_detector.features.engineer_features import RISK_FEATURE_COLUMNS
+<<<<<<< HEAD
 from src.audit_anomaly_detector.database.postgres_connector import save_flagged_to_postgres
+=======
+from src.audit_anomaly_detector.database.postgres_connector import (
+    save_flagged_to_postgres,
+)
+
+>>>>>>> e493e81aee087ef3d70c60041e0d312900c25112
 
 PROCESSED_PATH = Path("data") / "processed" / "vendor_payments_processed.csv"
 MODELS_DIR = Path("models")
@@ -145,11 +152,24 @@ def main() -> None:
 
     flagged_out.to_csv(FLAGGED_PATH, index=False)
 
+<<<<<<< HEAD
     # === SAVE TO SQLITE (simple & zero-setup) ===
     from src.audit_anomaly_detector.database.db_connector import save_flagged_to_db
     save_flagged_to_db(flagged_out)
     
     # Final output
+=======
+    # Also persist flagged rows into PostgreSQL audit table, if reachable.
+    try:
+        inserted = save_flagged_to_postgres(flagged_out)
+        print(f"Data saved to PostgreSQL audit table (rows inserted: {inserted}).")
+    except Exception as exc:  # noqa: BLE001 - safe to log generic DB error here
+        print(f"Warning: could not save to PostgreSQL ({exc}).")
+
+    # ------------------------------------------------------------------
+    # 7. Print audit-friendly outputs
+    # ------------------------------------------------------------------
+>>>>>>> e493e81aee087ef3d70c60041e0d312900c25112
     n_anomalies = int((df["anomaly_score"] == 1).sum())
     print("Model trained successfully!")
     print(f"Total transactions: {len(df):,}")
