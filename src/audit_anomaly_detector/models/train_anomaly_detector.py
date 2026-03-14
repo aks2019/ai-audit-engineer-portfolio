@@ -10,7 +10,7 @@ This module trains:
 It also:
 - Generates SHAP-based, plain-language explanations
 - Writes flagged transactions to CSV
-- Saves everything to PostgreSQL audit table (with graceful fallback)
+- Saves everything to SQLite (zero-setup)
 """
 
 from pathlib import Path
@@ -24,14 +24,7 @@ from sklearn.ensemble import IsolationForest
 from xgboost import XGBRegressor
 
 from src.audit_anomaly_detector.features.engineer_features import RISK_FEATURE_COLUMNS
-<<<<<<< HEAD
-from src.audit_anomaly_detector.database.postgres_connector import save_flagged_to_postgres
-=======
-from src.audit_anomaly_detector.database.postgres_connector import (
-    save_flagged_to_postgres,
-)
-
->>>>>>> e493e81aee087ef3d70c60041e0d312900c25112
+from src.audit_anomaly_detector.database.db_connector import save_flagged_to_db
 
 PROCESSED_PATH = Path("data") / "processed" / "vendor_payments_processed.csv"
 MODELS_DIR = Path("models")
@@ -98,8 +91,6 @@ def _explain_with_shap(model: XGBRegressor, X: pd.DataFrame, df_original: pd.Dat
         for fi in top_feat:
             name = feature_names[fi]
             value = row_vals.iloc[fi]
-            contrib = row_shap[fi]
-
             if name == "amount":
                 parts.append(f"amount is ₹{value:,.0f}")
             elif name == "amount_ratio":
@@ -152,37 +143,15 @@ def main() -> None:
 
     flagged_out.to_csv(FLAGGED_PATH, index=False)
 
-<<<<<<< HEAD
-    # === SAVE TO SQLITE (simple & zero-setup) ===
-    from src.audit_anomaly_detector.database.db_connector import save_flagged_to_db
+    # === SAVE TO SQLITE ===
     save_flagged_to_db(flagged_out)
-    
-    # Final output
-=======
-    # Also persist flagged rows into PostgreSQL audit table, if reachable.
-    try:
-        inserted = save_flagged_to_postgres(flagged_out)
-        print(f"Data saved to PostgreSQL audit table (rows inserted: {inserted}).")
-    except Exception as exc:  # noqa: BLE001 - safe to log generic DB error here
-        print(f"Warning: could not save to PostgreSQL ({exc}).")
 
-    # ------------------------------------------------------------------
-    # 7. Print audit-friendly outputs
-    # ------------------------------------------------------------------
->>>>>>> e493e81aee087ef3d70c60041e0d312900c25112
-    n_anomalies = int((df["anomaly_score"] == 1).sum())
-    print("Model trained successfully!")
-    print(f"Total transactions: {len(df):,}")
-    print(f"Number of anomalies detected: {n_anomalies:,}")
-    print("✅ Week 2 complete — Data saved in SQLite database!")
-    
     # Final output
     n_anomalies = int((df["anomaly_score"] == 1).sum())
     print("Model trained successfully!")
     print(f"Total transactions: {len(df):,}")
     print(f"Number of anomalies detected: {n_anomalies:,}")
-    print("\n=== Top 10 flagged transactions with explanations ===")
-    print(flagged_out.to_string(index=False, justify="left", max_colwidth=120))
+    print("✅ Week 4 complete — Data saved in SQLite and ready for live app!")
 
 
 if __name__ == "__main__":
