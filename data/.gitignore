@@ -1,0 +1,52 @@
+# Python cache & compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Secrets & API keys — CRITICAL for your audit projects
+.env
+.env.local
+*.env
+secrets.toml
+.streamlit/secrets.toml
+
+# Streamlit & deployment files
+.streamlit/config.toml
+__pycache__/
+*.streamlit
+
+# Data files — NEVER commit real SAP or company data
+*.csv
+*.xlsx
+*.parquet
+*.json
+data/
+raw/
+anonymized/
+processed/
+
+# Logs & temporary files
+*.log
+logs/
+temp/
+
+# IDE / Cursor / VS Code files
+.vscode/
+.cursor/
+.DS_Store
+Thumbs.db
+
+# Docker & environment
+.dockerignore
+Dockerfile.*
+.docker/
+
+# Jupyter notebooks (if you ever use them)
+.ipynb_checkpoints/
