@@ -3,10 +3,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="AI Vendor Payment Anomaly Detector", layout="wide", page_icon="🚨")
+st.set_page_config(page_title="AI Vendor Payment Anomaly Detector", layout="wide", page_icon="🔴")
 
-st.title("🚨 AI Vendor Payment Anomaly Detector")
-st.markdown("**Built by Ashok Kumar Sharma | SAP FICO Auditor | Week 8 Production Version**")
+st.title("🔴 AI Vendor Payment Anomaly Detector")
+st.markdown("**Built by Ashok Sharma | SAP FICO Auditor | Week 8 Production Version**")
 st.caption("Powered by Isolation Forest + XGBoost-style scoring | 100% population testing instead of sampling")
 
 uploaded_file = st.file_uploader(
