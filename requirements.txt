@@ -1,4 +1,4 @@
-streamlit 
+streamlit
 pandas
 plotly
 scikit-learn
@@ -6,3 +6,6 @@ xgboost
 shap
 joblib
 numpy
+fastapi
+uvicorn
+python-multipart
