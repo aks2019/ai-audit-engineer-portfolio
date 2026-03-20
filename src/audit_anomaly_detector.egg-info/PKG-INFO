@@ -1,0 +1,49 @@
+Metadata-Version: 2.4
+Name: audit-anomaly-detector
+Version: 0.1.0
+Summary: Clean Python template for an audit anomaly detection engine.
+Author-email: Your Name <you@example.com>
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy==1.26.4
+Requires-Dist: pandas==2.2.0
+Requires-Dist: scikit-learn==1.4.0
+Requires-Dist: xgboost==2.0.3
+Requires-Dist: shap==0.44.1
+Requires-Dist: matplotlib==3.8.2
+Requires-Dist: seaborn==0.13.2
+Requires-Dist: polars==0.20.3
+Requires-Dist: psycopg2-binary==2.9.9
+Requires-Dist: python-dotenv==1.0.1
+Requires-Dist: loguru==0.7.2
+
+# 🚨 AI Vendor Payment Anomaly Detector
+
+**Built by Ashok Sharma** | SAP FICO Auditor (17+ years FMCG & Manufacturing)
+
+**Live Demo**: [https://aiauditengineer.onrender.com/](https://aiauditengineer.onrender.com/)
+
+A production-grade AI tool that turns any SAP FICO / Caseware IDEA export into instant high-risk transaction flags with **plain-English SHAP explanations**.
+
+### Features
+- Upload any CSV/Excel vendor payment file
+- Isolation Forest + XGBoost anomaly detection
+- SHAP-based audit-ready explanations (e.g., “341.5× historical average”)
+- Interactive filters, Plotly charts, metric cards
+- SQLite audit trail + automatic weekly GitHub Actions run
+- Fully deployed on Render (free tier)
+
+### Tech Stack
+Python • Streamlit • Scikit-learn • XGBoost • SHAP • Plotly • GitHub Actions • SQLite
+
+### How to Run Locally
+```bash
+git clone https://github.com/yourusername/AI-Audit-Engineer-Portfolio.git
+cd AI-Audit-Engineer-Portfolio
+pip install -r requirements.txt
+streamlit run app.py
+
+Built as part of my 12-week AI Audit Engineer roadmap — moving from traditional sampling audits to 100% population testing with explainable AI.
+Open to opportunities: AI-Enabled Audit Lead | GRC AI Specialist | Finance Transformation Manager
+
+⭐ Star this repo if it helps your audit journey!
