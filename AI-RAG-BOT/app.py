@@ -6,12 +6,12 @@ from datetime import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
-#from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 #from langchain_anthropic import ChatAnthropic
 
-os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
-os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
-from langchain_openai import ChatOpenAI             # comment out while using online AI Model
+# os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
+# os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
+# from langchain_openai import ChatOpenAI             # comment out while using online AI Model
 
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
@@ -34,25 +34,25 @@ def load_vectorstore():
 vectorstore = load_vectorstore()
 
 # ====================== LLM Settings (use ctrl+l to commentout lines)======================
-# llm = ChatGoogleGenerativeAI(
-#    model="gemini-2.5-flash",
-#    google_api_key=os.getenv("GOOGLE_API_KEY"),
-#    temperature=0.0
-# )
+llm = ChatGoogleGenerativeAI(
+   model="gemini-2.5-flash",
+   google_api_key=os.getenv("GOOGLE_API_KEY"),
+   temperature=0.0
+)
 
 # ────────────────────────────────────────────────
 # Add / replace with this block
 # ────────────────────────────────────────────────
 # --------------------------------------------------------------
-llm = ChatOpenAI(
-    base_url="http://127.0.0.1:1234/v1",          # ← LM Studio default
-    api_key="lm-studio",                          # dummy key – LM Studio ignores it
-    model="bartowski-qwen_qwen3.5-9b",                  # ← use the exact name/tag shown in LM Studio
-    temperature=0.0,
-    max_tokens=4096,                              # adjust depending on your needs
-    # Optional but useful for audit-style strictness
-    extra_body={"presence_penalty": 0.0, "frequency_penalty": 0.0}
-)
+# llm = ChatOpenAI(
+#     base_url="http://127.0.0.1:1234/v1",          # ← LM Studio default
+#     api_key="lm-studio",                          # dummy key – LM Studio ignores it
+#     model="nvidia/nemotron-3-nano-4b",                  # ← use the exact name/tag shown in LM Studio
+#     temperature=0.0,
+#     max_tokens=4096,                              # adjust depending on your needs
+#     # Optional but useful for audit-style strictness
+#     extra_body={"presence_penalty": 0.0, "frequency_penalty": 0.0}
+# )
 
 # ------------------------------------------------------------------------
 #llm = ChatAnthropic(
