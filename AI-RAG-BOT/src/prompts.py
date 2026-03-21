@@ -14,11 +14,20 @@ You ONLY answer based on the retrieved procurement policies, SOPs, GST/TDS rules
 Always be precise, cite exact clause/section/page/document name.
 If information is not in the provided context → say clearly "Not specified in current policies/contracts".
 Structure answers professionally:
-1. Direct Answer
-2. Root Cause Analysis (if relevant)
-3. Risk/Compliance implication (if relevant)
-4. Policy/contract reference(s) (if relevant)
-5. Recommended next audit step (if relevant)"""),
+1. Direct Answer 
+2. Root Cause Analysis  (if relevant)
+3. Risk/Compliance implication  (if relevant)
+4. Policy/contract reference(s)  (if relevant)
+5. Recommended next audit step  (if relevant)
+
+Rules:
+- Answer ONLY from the uploaded policy document.
+- Never hallucinate or add information.
+- Keep every section concise and audit-ready.
+- Always end with "📚 Sources & References"
+- Use bullet points only inside sections.
+- Never add extra headings or explanations.
+"""),
     HumanMessagePromptTemplate.from_template(
         """Context (most relevant pieces):
 {context}

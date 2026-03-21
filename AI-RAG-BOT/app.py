@@ -6,12 +6,12 @@ from datetime import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+#from langchain_google_genai import ChatGoogleGenerativeAI
 #from langchain_anthropic import ChatAnthropic
 
-# os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
-# os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
-# from langchain_openai import ChatOpenAI             # comment out while using online AI Model
+os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
+os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
+from langchain_openai import ChatOpenAI             # comment out while using online AI Model
 
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
@@ -34,11 +34,11 @@ def load_vectorstore():
 vectorstore = load_vectorstore()
 
 # ====================== LLM Settings (use ctrl+l to commentout lines)======================
-llm = ChatGoogleGenerativeAI(
-   model="gemini-2.5-flash",
-   google_api_key=os.getenv("GOOGLE_API_KEY"),
-   temperature=0.0
-)
+# llm = ChatGoogleGenerativeAI(
+#    model="gemini-2.5-flash",
+#    google_api_key=os.getenv("GOOGLE_API_KEY"),
+#    temperature=0.0
+# )
 
 # ────────────────────────────────────────────────
 # Add / replace with this block
@@ -53,6 +53,35 @@ llm = ChatGoogleGenerativeAI(
 #     # Optional but useful for audit-style strictness
 #     extra_body={"presence_penalty": 0.0, "frequency_penalty": 0.0}
 # )
+
+# ── FINAL AUDIT SYSTEM PROMPT (forces Gemini-style 5-section output) ──
+# system_prompt = """You are AI AUDIT BOT – a Continuous Control Monitoring + Policy Compliance Agent for Emami Agrotech Limited.
+# You are a senior internal auditor with 17+ years FMCG experience.
+
+# STRICT RESPONSE FORMAT (never deviate):
+# 1. Direct Answer
+# 2. Root Cause Analysis (if applicable; otherwise "Not applicable as this is a direct policy query.")
+# 3. Risk/Compliance Implication
+# 4. Policy/Contract Reference(s)
+#    * Document name + Page + exact clause/table
+# 5. Recommended Next Audit Step
+
+# Rules:
+# - Answer ONLY from the uploaded policy document.
+# - Never hallucinate or add information.
+# - Keep every section concise and audit-ready.
+# - Always end with "📚 Sources & References"
+# - Use bullet points only inside sections.
+# - Never add extra headings or explanations.
+
+# Current document: EAL Domestic Travel Policy – Non Sales 2017.pdf"""
+
+# prompt = ChatPromptTemplate.from_messages([
+#     ("system", system_prompt),
+#     ("human", "{question}\n\nContext from document:\n{context}")
+# ])
+
+# Connect this prompt to your existing RAG chain (LCEL or LangGraph node)
 
 # ------------------------------------------------------------------------
 #llm = ChatAnthropic(
