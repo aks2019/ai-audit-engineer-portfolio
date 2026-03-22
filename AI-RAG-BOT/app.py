@@ -6,12 +6,12 @@ from datetime import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
-#from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 #from langchain_anthropic import ChatAnthropic
 
-os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
-os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
-from langchain_openai import ChatOpenAI             # comment out while using online AI Model
+# os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
+# os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
+# from langchain_openai import ChatOpenAI             # comment out while using online AI Model
 
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
@@ -34,55 +34,51 @@ def load_vectorstore():
 vectorstore = load_vectorstore()
 
 # ====================== LLM Settings (use ctrl+l to commentout lines)======================
-# llm = ChatGoogleGenerativeAI(
-#    model="gemini-2.5-flash",
-#    google_api_key=os.getenv("GOOGLE_API_KEY"),
-#    temperature=0.0
-# )
+llm = ChatGoogleGenerativeAI(
+   model="gemini-2.5-flash",
+   google_api_key=os.getenv("GOOGLE_API_KEY"),
+   temperature=0.0
+)
 
 # ────────────────────────────────────────────────
 # Add / replace with this block
 # ────────────────────────────────────────────────
 # --------------------------------------------------------------
-llm = ChatOpenAI(
-    base_url="http://127.0.0.1:1234/v1",          # ← LM Studio default
-    api_key="lm-studio",                          # dummy key – LM Studio ignores it
-    model="nvidia/nemotron-3-nano-4b",                  # ← use the exact name/tag shown in LM Studio
-    temperature=0.0,
-    max_tokens=4096,                              # adjust depending on your needs
-    # Optional but useful for audit-style strictness
-    extra_body={"presence_penalty": 0.0, "frequency_penalty": 0.0}
-)
+# # llm = ChatOpenAI(
+# #     base_url="http://127.0.0.1:1234/v1",          # ← LM Studio default
+# #     api_key="lm-studio",                          # dummy key – LM Studio ignores it
+# #     model="bartowski-qwen_qwen3.5-9b",                  # ← use the exact name/tag shown in LM Studio
+# #     temperature=0.0,
+# #     max_tokens=4096,                              # adjust depending on your needs
+# #     # Optional but useful for audit-style strictness
+# #     extra_body={"presence_penalty": 0.0, "frequency_penalty": 0.0}
+# # )
 
-# FINAL AUDIT SYSTEM PROMPT (forces Gemini-style 5-section output) ──
-system_prompt = """You are AI AUDIT BOT – a Continuous Control Monitoring + Policy Compliance Agent for Emami Agrotech Limited.
-You are a senior internal auditor with 17+ years FMCG experience.
+# # FINAL AUDIT SYSTEM PROMPT (forces Gemini-style 5-section output) ──
+# system_prompt = """You are AI AUDIT BOT – a Continuous Control Monitoring + Policy Compliance Agent for Emami Agrotech Limited.
+# You are a senior internal auditor with 17+ years FMCG experience.
 
-MANDATORY RESPONSE FORMAT – never change order or add sections:
-1. Direct Answer
-   - Short, factual bullet points only
-2. Root Cause Analysis
-   - "Not applicable" if this is a direct policy query
-3. Risk/Compliance Implication
-   - Focus on key risks only (1–3 bullets max)
-4. Policy/Contract Reference(s)
-   - Bullet list: Document name, exact page, clause/table/row
-   - Quote only the most relevant sentence fragment
-5. Recommended Next Audit Step
-   - 2–4 concrete verification actions
+# STRICT RESPONSE FORMAT (never deviate):
+# 1. Direct Answer
+# 2. Root Cause Analysis (if applicable; otherwise "Not applicable as this is a direct policy query.")
+# 3. Risk/Compliance Implication
+# 4. Policy/Contract Reference(s)
+#    * Document name + Page + exact clause/table
+# 5. Recommended Next Audit Step
 
-STRICT RULES:
-- Answer ONLY from the provided document context.
-- Be concise – maximum 4–6 lines per section.
-- Use precise clause/page references – do not guess or generalize.
-- Never add external knowledge or assumptions.
-- End exactly with: 📚 Sources & References
-"""
+# Rules:
+# - Answer ONLY from the uploaded policy document.
+# - Never hallucinate or add information.
+# - Keep every section concise and audit-ready.
+# - Always end with "📚 Sources & References"
+# - Use bullet points only inside sections.
+# - Never add extra headings or explanations.
+# """
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    ("human", "{question}\n\nContext from document:\n{context}")
-])
+# prompt = ChatPromptTemplate.from_messages([
+#     ("system", system_prompt),
+#     ("human", "{question}\n\nContext from document:\n{context}")
+# ])
 
 # Connect this prompt to your existing RAG chain (LCEL or LangGraph node)
 
