@@ -1,0 +1,18 @@
+services:
+  db:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: audit
+    ports:
+      - "5432:5432"
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    depends_on:
+      - db
+    environment:
+      NEON_CONNECTION_STRING: ${NEON_CONNECTION_STRING}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
