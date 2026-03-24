@@ -9,3 +9,8 @@ numpy
 python-multipart
 psycopg2-binary
 python-dotenv
+langchain-postgres
+langchain-huggingface
+langchain-google-genai
+pymupdf
+reportlab
