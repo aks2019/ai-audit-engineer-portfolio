@@ -5,10 +5,6 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-#from langchain_anthropic import ChatAnthropic
-# os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
-# os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
-# from langchain_openai import ChatOpenAI             # comment out while using online AI Model
 
 load_dotenv()
 
@@ -23,24 +19,6 @@ def get_vectorstore():
     )
 
 # ====================== LLM Settings (use ctrl+l to commentout lines)======================
-# FOR USING WITH OFFLINE AI MODELS:
-# def get_rag_chain():
-#     # === GEMINI (online - default) ===
-#     # llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=os.getenv("GOOGLE_API_KEY"), temperature=0.0)
-
-#     # === LOCAL QWEN 3.5-9b (offline - secure) ===
-#     from langchain_openai import ChatOpenAI
-#     llm = ChatOpenAI(
-#         base_url="http://127.0.0.1:1234/v1",
-#         api_key="lm-studio",
-#         model="bartowski-qwen_qwen3.5-9b",   # exact name shown in LM Studio
-#         temperature=0.0,
-#         max_tokens=4096
-#     )
-
-#     RAG_PROMPT = ChatPromptTemplate.from_messages([ ... ])   # keep the same prompt above
-#     return RAG_PROMPT | llm
-#--------------------------------------------------------------------------------------------------
 # FOR USING WITH ONLINE AI MODELS:
 def get_rag_chain():
     llm = ChatGoogleGenerativeAI(
