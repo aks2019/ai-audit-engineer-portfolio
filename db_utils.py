@@ -2,7 +2,6 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 from datetime import datetime
-
 load_dotenv()
 
 def get_db_connection():
@@ -11,8 +10,7 @@ def get_db_connection():
 def save_audit_run(df, run_name="Manual Upload"):
     conn = get_db_connection()
     cur = conn.cursor()
-    
-    # Create table once
+   
     cur.execute("""
         CREATE TABLE IF NOT EXISTS audit_logs (
             id SERIAL PRIMARY KEY,
@@ -26,10 +24,10 @@ def save_audit_run(df, run_name="Manual Upload"):
             raw_json JSONB
         );
     """)
-    
+   
     for _, row in df.iterrows():
         cur.execute("""
-            INSERT INTO audit_logs 
+            INSERT INTO audit_logs
             (run_timestamp, run_name, transaction_id, vendor_name, amount, risk_score, anomaly, raw_json)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (
@@ -42,7 +40,28 @@ def save_audit_run(df, run_name="Manual Upload"):
             int(row.get('Anomaly', 0)),
             row.to_json()
         ))
-    
+   
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# RAG audit logging (this was missing)
+def log_rag_query(query, response):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS rag_audit_logs (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP,
+            query TEXT,
+            response TEXT,
+            user_id TEXT DEFAULT 'Ashok'
+        );
+    """)
+    cur.execute("""
+        INSERT INTO rag_audit_logs (timestamp, query, response)
+        VALUES (%s, %s, %s)
+    """, (datetime.now(), query, response))
     conn.commit()
     cur.close()
     conn.close()
