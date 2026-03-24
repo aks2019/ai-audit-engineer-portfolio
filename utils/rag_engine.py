@@ -4,10 +4,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage
-
 from langchain_google_genai import ChatGoogleGenerativeAI
 #from langchain_anthropic import ChatAnthropic
-
 # os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
 # os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
 # from langchain_openai import ChatOpenAI             # comment out while using online AI Model
