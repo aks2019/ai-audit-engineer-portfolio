@@ -2,14 +2,12 @@ import streamlit as st
 import json
 import os
 from datetime import datetime
-from utils.rag_engine import get_vectorstore, get_rag_chain
+from utils.rag_engine import get_vectorstore, get_rag_chain, get_free_form_chain, add_documents_from_upload, add_documents_from_csv_or_excel
 from db_utils import log_rag_query
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
-from langchain_community.document_loaders import PyMuPDFLoader
-import tempfile
-from utils.rag_engine import get_rag_chain, add_documents_from_upload
+from pathlib import Path
 
 st.title("📋 AI Policy RAG Bot")
 st.caption("Continuous Control Monitoring + Policy Compliance Agent | 100% Audit Trail | Built by Ashok Sharma")
@@ -33,7 +31,7 @@ if "messages" not in st.session_state:
 if "chat_title" not in st.session_state:
     st.session_state.chat_title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
-# ====================== SIDEBAR – ALL YOUR ORIGINAL CONTROLS ======================
+# Sidebar (all original controls preserved)
 with st.sidebar:
     st.header("Chat Controls")
     if st.button("➕ New Conversation"):
@@ -85,7 +83,6 @@ with st.sidebar:
         else:
             st.info("No matches found")
 
-# ====================== PDF EXPORT FUNCTION (your original) ======================
 def generate_pdf(messages, title="Conversation"):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -116,33 +113,53 @@ def generate_pdf(messages, title="Conversation"):
     buffer.seek(0)
     return buffer
 
-# ====================== MAIN CHAT + UPLOAD + INPUT ======================
 st.markdown(f"**Active Chat:** {st.session_state.chat_title}")
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-uploaded_doc = st.file_uploader("Upload new policy/contract PDF", type=["pdf"])
+# Upload support for PDF + CSV + Excel (preserved)
+uploaded_doc = st.file_uploader("Upload new policy/contract PDF / SAP CSV / Excel", type=["pdf", "csv", "xlsx"])
 if uploaded_doc:
     with st.spinner("Indexing..."):
-        count = add_documents_from_upload(uploaded_doc)
-        st.success(f"✅ Indexed {count} pages into pgvector")
+        suffix = Path(uploaded_doc.name).suffix.lower()
+        if suffix == ".pdf":
+            count = add_documents_from_upload(uploaded_doc)
+        else:
+            count = add_documents_from_csv_or_excel(uploaded_doc)
+        st.success(f"✅ Indexed {count} pages/rows into pgvector")
+
+# Response Mode radio (preserved)
+mode = st.radio("Response Mode", ["Structured Audit Report", "Free-Form Discussion"], horizontal=True, key="response_mode")
 
 if prompt := st.chat_input("Ask about policy, clause, contract..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
+    
     with st.chat_message("assistant"):
         with st.spinner("Searching..."):
+            # === FIXED: Inject full conversation history ===
+            history = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in st.session_state.messages[:-1]])
+            
             vectorstore = get_vectorstore()
             docs = vectorstore.similarity_search(prompt, k=5)
             context = "\n\n---\n\n".join(f"Document: {d.metadata.get('source', 'Policy')}\n{d.page_content}" for d in docs)
-            chain = get_rag_chain()
-            response = chain.invoke({"context": context, "question": prompt})
+            
+            full_context = f"""Previous conversation history:
+{history}
+
+Retrieved policy/contract documents:
+{context}"""
+            
+            chain = get_rag_chain() if mode == "Structured Audit Report" else get_free_form_chain()
+            response = chain.invoke({"context": full_context, "question": prompt})
+            
             st.markdown(response.content)
             with st.expander("📚 Sources & References"):
                 for i, doc in enumerate(docs, 1):
                     st.markdown(f"**{i}.** {doc.metadata.get('source', 'Policy doc')}")
             log_rag_query(prompt, response.content)
+    
     st.session_state.messages.append({"role": "assistant", "content": response.content})
     save_current_chat(st.session_state.messages)
