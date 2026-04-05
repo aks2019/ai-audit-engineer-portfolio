@@ -2,12 +2,12 @@ import streamlit as st
 import json
 import os
 from datetime import datetime
-from utils.rag_engine import get_vectorstore, get_rag_chain, get_free_form_chain, add_documents_from_upload, add_documents_from_csv_or_excel
+from pathlib import Path   # ← ADD THIS LINE
+from utils.rag_engine import get_vectorstore, get_rag_chain, get_free_form_chain, add_documents_from_upload, add_documents_from_csv_or_excel_or_office
 from db_utils import log_rag_query
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
-from pathlib import Path
 
 st.title("📋 AI Policy RAG Bot")
 st.caption("Continuous Control Monitoring + Policy Compliance Agent | 100% Audit Trail | Built by Ashok Sharma")
@@ -118,17 +118,19 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Upload support for PDF + CSV + Excel (preserved)
-uploaded_doc = st.file_uploader("Upload new policy/contract PDF / SAP CSV / Excel", type=["pdf", "csv", "xlsx"])
+# UPLOAD SUPPORT FOR PDF + CSV + EXCEL + DOCX + PPTX
+uploaded_doc = st.file_uploader(
+    "Upload new policy/contract PDF / SAP CSV / Excel / DOCX / PPTX",
+    type=["pdf", "csv", "xlsx", "docx", "pptx"]
+)
 if uploaded_doc:
     with st.spinner("Indexing..."):
         suffix = Path(uploaded_doc.name).suffix.lower()
         if suffix == ".pdf":
             count = add_documents_from_upload(uploaded_doc)
         else:
-            count = add_documents_from_csv_or_excel(uploaded_doc)
+            count = add_documents_from_csv_or_excel_or_office(uploaded_doc)
         st.success(f"✅ Indexed {count} pages/rows into pgvector")
-
 # Response Mode radio (preserved)
 mode = st.radio("Response Mode", ["Structured Audit Report", "Free-Form Discussion"], horizontal=True, key="response_mode")
 

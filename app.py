@@ -20,7 +20,7 @@
 #     import pages.policy_rag_bot
 
 
-#New setting, delete above codes if the below works well
+# #New setting, delete above codes if the below works well
 
 import streamlit as st
 
@@ -37,3 +37,4 @@ st.markdown("**Payment Anomaly Detector + Contract RAG Bot** | SAP FICO-MM | 100
 
 st.info("✅ Anomaly + Contract RAG integration complete. Use sidebar to switch pages.")
 st.caption("Phase 3 complete | Ready for BRS Anomaly Agent (Week 13)")
+

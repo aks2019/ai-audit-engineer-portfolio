@@ -1,5 +1,6 @@
 import os
 import hashlib
+from pathlib import Path
 from langchain_postgres import PGVector
 from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
@@ -20,25 +21,12 @@ def get_vectorstore():
         use_jsonb=True
     )
 
-# ====================== LLM Settings ======================
-# def get_rag_chain():  # STRICT AUDIT REPORT MODE
-#     llm = ChatGoogleGenerativeAI(
-#         model="gemini-2.5-flash",
-#         google_api_key=os.getenv("GOOGLE_API_KEY"),
-#         temperature=0.0
-#     )
-# === LOCAL QWEN 3.5-9b (offline - secure) ========================================
-def get_rag_chain():  # STRICT AUDIT REPORT MODE
-    from langchain_openai import ChatOpenAI
-    llm = ChatOpenAI(
-        base_url="http://127.0.0.1:1234/v1",
-        api_key="lm-studio",
-        model= "nvidia/nemotron-3-nano-4b", #"qwen/qwen3.5-9b", # exact name shown in LM Studio
-        temperature=0.0,
-        max_tokens=32000
+def get_rag_chain():
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
+        temperature=0.0
     )
-# =============================================================================================
-
     RAG_PROMPT = ChatPromptTemplate.from_messages([
         SystemMessage(content="""You are AI AUDIT BOT – a Continuous Control Monitoring + Policy Compliance Agent for Emami Agrotech Limited.
 You are a senior internal auditor with 17+ years FMCG experience.
@@ -65,30 +53,17 @@ Question: {question}
 Answer:""")
     ])
     return RAG_PROMPT | llm
-# ====================== LLM Settings (use ctrl+l to commentout lines)======================
-# FOR USING WITH ONLINE AI MODELS:
-# def get_free_form_chain():  # FREE-FORM DISCUSSION MODE
-#     llm = ChatGoogleGenerativeAI(
-#         model="gemini-2.5-flash",
-#         google_api_key=os.getenv("GOOGLE_API_KEY"),
-#         temperature=0.0
-#     )
-# === LOCAL QWEN 3.5-9b (offline - secure) ========================================
-def get_free_form_chain():  # FREE-FORM DISCUSSION MODE
-    from langchain_openai import ChatOpenAI
-    llm = ChatOpenAI(
-        base_url="http://127.0.0.1:1234/v1",
-        api_key="lm-studio",
-        model= "nvidia/nemotron-3-nano-4b", #"qwen/qwen3.5-9b", # exact name shown in LM Studio
-        temperature=0.0,
-        max_tokens=32000
+
+def get_free_form_chain():
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
+        temperature=0.0
     )
-# =============================================================================================
-    
     FREE_PROMPT = ChatPromptTemplate.from_messages([
-        SystemMessage(content="""You are AI AUDIT BOT – an experienced internal auditor.
+        SystemMessage(content="""You are AI AUDIT BOT – a senior internal auditor with 17+ years FMCG experience.
 Answer questions concisely and directly. Use plain English. No fixed 5-section format unless asked.
-Always end with "📚 Sources & References" if files / documents were used."""),
+Always end with "📚 Sources & References" if documents were used."""),
         ("human", """Context (most relevant pieces):
 {context}
 
@@ -109,21 +84,42 @@ def add_documents_from_upload(uploaded_file):  # PDF only
     os.unlink(tmp_path)
     return len(docs)
 
-def add_documents_from_csv_or_excel(uploaded_file):  # SAP CSV/Excel support
+def add_documents_from_csv_or_excel_or_office(uploaded_file):  # CSV, XLSX, DOCX, PPTX
     import tempfile
-    import pandas as pd
     suffix = Path(uploaded_file.name).suffix.lower()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(uploaded_file.getvalue())
-        tmp_path = tmp.name
-    df = pd.read_csv(tmp_path) if suffix == ".csv" else pd.read_excel(tmp_path)
-    docs = [Document(page_content=row.to_string(), metadata={"source": uploaded_file.name, "row": i}) 
-            for i, row in df.iterrows()]
-    get_vectorstore().add_documents(docs)
-    os.unlink(tmp_path)
-    return len(docs)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(uploaded_file.getvalue())
+            tmp_path = tmp.name
 
-# For dynamic RAG review of Vendor contracts terms violation under vendor anomaly detector:
+        if suffix in [".csv", ".xlsx"]:
+            import pandas as pd
+            df = pd.read_csv(tmp_path) if suffix == ".csv" else pd.read_excel(tmp_path)
+            docs = [Document(page_content=row.to_string(), metadata={"source": uploaded_file.name, "row": i}) 
+                    for i, row in df.iterrows()]
+        elif suffix == ".docx":
+            import docx2txt
+            text = docx2txt.process(tmp_path)
+            docs = [Document(page_content=text, metadata={"source": uploaded_file.name})]
+        elif suffix == ".pptx":
+            from pptx import Presentation
+            prs = Presentation(tmp_path)
+            text = ""
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text += shape.text + "\n"
+            docs = [Document(page_content=text, metadata={"source": uploaded_file.name})]
+        else:
+            docs = []
+
+        get_vectorstore().add_documents(docs)
+        return len(docs)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
 def generate_rag_audit_report(flagged_transactions, contract_text=None, vendor_name=None):
     query = f"""
 Generate full audit-ready executive summary for these flagged high-risk vendor payments:
