@@ -31,6 +31,7 @@ st.sidebar.title("AI Audit Engineer")
 st.sidebar.page_link("app.py", label="🏠 Home", icon="🏠")
 st.sidebar.page_link("pages/policy_rag_bot.py", label="📜 Policy RAG Bot", icon="2️⃣")
 st.sidebar.page_link("pages/anomaly_detector.py", label="🚨 Anomaly Detector", icon="1️⃣")
+st.sidebar.page_link("pages/dynamic_audit_builder.py", label="🛠️ Dynamic Audit Builder", icon="3️⃣")
 
 st.title("🚀 AI Audit Engineer – Unified Local Dashboard")
 st.markdown("**Payment Anomaly Detector + Contract RAG Bot** | SAP FICO-MM | 100% Population Testing | Localhost only")

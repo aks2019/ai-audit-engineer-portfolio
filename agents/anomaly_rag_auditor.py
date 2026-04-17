@@ -1,63 +1,105 @@
-from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage
-from typing import TypedDict, List, Dict
-import json
-from datetime import datetime
+from __future__ import annotations
+
 import hashlib
-from utils.logging import audit_log  # your existing audit logger
+import json
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, TypedDict
+
+from langgraph.graph import END, StateGraph
+from langchain_core.messages import HumanMessage
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.rag_engine import _get_vectorstore_safe, get_rag_chain
+
+logger = logging.getLogger(__name__)
+
+
+# ── State schema ──────────────────────────────────────────────────────────
 
 class AnomalyRAGState(TypedDict):
-    flagged_transactions: List[Dict]  # from anomaly detector output
-    vendor_contracts: List[Dict]      # RAG retrievals
+    flagged_transactions: List[Dict]   # input: anomaly detector output
+    vendor_contracts: List[Dict]       # retrieved policy/contract chunks
     audit_summary: str
     citations: List[str]
     log_hash: str
 
-def extract_anomaly_data(state: AnomalyRAGState):
-    # Input is already structured from Payment Anomaly Detector (SAP FICO-MM format)
+
+# ── Node: pass-through validation ─────────────────────────────────────────
+
+def extract_anomaly_data(state: AnomalyRAGState) -> AnomalyRAGState:
     return state
 
-def policy_rag_check(state: AnomalyRAGState):
-    # Reuse your existing RAG chain (hybrid pgvector + keyword + metadata filter on vendor_code)
-    query = f"""
-    Analyse these flagged payment anomalies for policy violations:
-    {json.dumps(state['flagged_transactions'], indent=2)}
-    
-    Check against vendor contracts, procurement SOPs, GST/TDS circulars, related-party rules.
-    Flag any Section 4.2 related-party breach or GST/TDS mismatch.
-    """
-    # Your existing LangGraph RAG node call here (from local RAG bot)
-    response = rag_chain.invoke({"messages": [HumanMessage(content=query)]})  # rag_chain already in your code
-    state['vendor_contracts'] = response.get("retrieved_docs", [])
-    state['citations'] = [doc.metadata["source"] for doc in response.get("retrieved_docs", [])]
+
+# ── Node: RAG retrieval ───────────────────────────────────────────────────
+
+def policy_rag_check(state: AnomalyRAGState) -> AnomalyRAGState:
+    query = (
+        "Analyse these flagged payment anomalies for policy violations: "
+        + json.dumps(state["flagged_transactions"][:10])  # cap to avoid context overflow
+        + " Check vendor contracts, procurement SOPs, GST/TDS circulars, related-party rules."
+    )
+
+    vectorstore, db_error = _get_vectorstore_safe()
+    if vectorstore is None:
+        logger.warning("Vectorstore unavailable: %s", db_error)
+        state["vendor_contracts"] = []
+        state["citations"] = []
+        return state
+
+    retrieved_docs = vectorstore.similarity_search(query[:1000], k=4)
+    state["vendor_contracts"] = [
+        {
+            "content": doc.page_content[:500],
+            "source": doc.metadata.get("source", "policy doc"),
+            "page": doc.metadata.get("page", ""),
+        }
+        for doc in retrieved_docs
+    ]
+    state["citations"] = [
+        f"{d['source']} (page {d['page']})" for d in state["vendor_contracts"]
+    ]
     return state
 
-def generate_audit_summary(state: AnomalyRAGState):
-    prompt = f"""
-    You are an audit-compliant AI Audit Engineer (FMCG/manufacturing, SAP FICO-MM).
-    Write a professional audit finding for the following flagged transactions.
-    Include SHAP reasons, policy violations (with exact clause), risk rating, and recommendation.
-    Use plain English + citations.
-    Transactions: {json.dumps(state['flagged_transactions'])}
-    Retrieved contracts: {json.dumps(state['vendor_contracts'])}
-    """
-    # Call Claude 4.6 Opus / Gemini 1.5 Pro (your existing LLM)
-    summary = llm.invoke(prompt)
-    state['audit_summary'] = summary.content
-    
-    # Audit trail
+
+# ── Node: LLM summary generation ──────────────────────────────────────────
+
+def generate_audit_summary(state: AnomalyRAGState) -> AnomalyRAGState:
+    context = "\n\n".join(d["content"] for d in state["vendor_contracts"])
+    question = (
+        "You are an audit-compliant AI Audit Engineer (FMCG/manufacturing, SAP FICO-MM). "
+        "Write a professional audit finding for the following flagged transactions. "
+        "Include policy violations (with exact clause), risk rating, and recommendation.\n\n"
+        f"Transactions:\n{json.dumps(state['flagged_transactions'][:10])}"
+    )
+
+    try:
+        chain = get_rag_chain()
+        response = chain.invoke({"context": context, "question": question})
+        summary = response.content if hasattr(response, "content") else str(response)
+    except Exception as exc:
+        logger.error("LLM call failed: %s", exc)
+        summary = f"⚠️ LLM unavailable — could not generate audit summary.\n\n`{exc}`"
+
+    log_hash = hashlib.sha256(summary.encode()).hexdigest()[:16]
+
     log_entry = {
         "timestamp": datetime.utcnow().isoformat(),
-        "user": "audit_user",  # from Streamlit session
-        "flagged_count": len(state['flagged_transactions']),
-        "summary_hash": hashlib.sha256(summary.content.encode()).hexdigest(),
-        "citations": state['citations']
+        "flagged_count": len(state["flagged_transactions"]),
+        "summary_hash": log_hash,
+        "citations": state["citations"],
     }
-    audit_log(log_entry)
-    state['log_hash'] = log_entry["summary_hash"]
+    logger.info("Audit log: %s", json.dumps(log_entry))
+
+    state["audit_summary"] = summary
+    state["log_hash"] = log_hash
     return state
 
-# Build the subgraph (add to your existing LangGraph workflow)
+
+# ── Graph ─────────────────────────────────────────────────────────────────
+
 workflow = StateGraph(AnomalyRAGState)
 workflow.add_node("extract", extract_anomaly_data)
 workflow.add_node("policy_check", policy_rag_check)

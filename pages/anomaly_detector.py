@@ -46,18 +46,24 @@ if uploaded_file:
 
         st.success(f"✅ Loaded {len(df):,} transactions successfully!")
 
-        st.sidebar.header("🔧 Column Mapping")
-        amount_col = st.sidebar.selectbox("Amount Column (required)", df.columns)
-        vendor_col = st.sidebar.selectbox("Vendor Name Column (required)", df.columns)
+        with st.expander("🔧 Column Mapping", expanded=True):
+            st.caption("Map your file's columns to the required audit roles. Required fields must be set before the model runs.")
+            cm_c1, cm_c2 = st.columns(2)
+            with cm_c1:
+                amount_col = st.selectbox("Amount Column (required)", df.columns)
+            with cm_c2:
+                vendor_col = st.selectbox("Vendor Name Column (required)", df.columns)
 
-        optional_cols = ["category", "plant_code", "related_party", "days_overdue"]
-        mapping = {}
-        for col in optional_cols:
-            mapping[col] = st.sidebar.selectbox(
-                f"{col} Column (optional)", 
-                ["None"] + list(df.columns), 
-                index=0 if col not in df.columns else list(df.columns).index(col) + 1
-            )
+            optional_cols = ["category", "plant_code", "related_party", "days_overdue"]
+            mapping = {}
+            opt_cols = st.columns(4)
+            for i, col in enumerate(optional_cols):
+                with opt_cols[i]:
+                    mapping[col] = st.selectbox(
+                        f"{col} (optional)",
+                        ["None"] + list(df.columns),
+                        index=0 if col not in df.columns else list(df.columns).index(col) + 1
+                    )
 
         df = df.rename(columns={amount_col: "amount", vendor_col: "vendor_name"})
 
@@ -91,7 +97,7 @@ if uploaded_file:
         # Critical Ageing Scrutiny + Risk Filters + Charts + Flagged Table + Download (full original UI)
         st.subheader("📊 Critical Vendor Payment Ageing Scrutiny")
         if "ageing_bucket" in df.columns:
-            bucket_summary = df.groupby("ageing_bucket")["amount"].agg(["count", "sum"]).round(2)
+            bucket_summary = df.groupby("ageing_bucket", observed=False)["amount"].agg(["count", "sum"]).round(2)
             bucket_summary = bucket_summary.reset_index()
             st.dataframe(bucket_summary, use_container_width=True, hide_index=True)
 
