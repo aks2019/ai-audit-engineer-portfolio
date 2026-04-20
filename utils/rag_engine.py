@@ -1,3 +1,7 @@
+import pandas as pd
+import json
+from io import StringIO
+from datetime import datetime
 import os
 import hashlib
 from pathlib import Path
@@ -36,11 +40,11 @@ def get_rag_chain():
     llm = ChatOpenAI(
         base_url="http://127.0.0.1:8080/v1",
         api_key="llama.cpp",
-        model="NVIDIA-Nemotron-3-Nano-4B-Q4_K_M",
-        temperature=0.7,
-        max_tokens=2048,
-        timeout=120,
-        max_retries=1,
+        model="Qwen3.6-35B-A3B-UD-IQ3_S",
+        temperature=1.0,
+        # max_tokens=2048,
+        # timeout=120,
+        # max_retries=1,
     )
     RAG_PROMPT = ChatPromptTemplate.from_messages([
         SystemMessage(content="""You are AI AUDIT BOT – a Continuous Control Monitoring + Policy Compliance Agent for Emami Agrotech Limited.
@@ -73,11 +77,11 @@ def get_free_form_chain():
     llm = ChatOpenAI(
         base_url="http://127.0.0.1:8080/v1",
         api_key="llama.cpp",
-        model="NVIDIA-Nemotron-3-Nano-4B-Q4_K_M",
-        temperature=0.7,
-        max_tokens=2048,
-        timeout=120,
-        max_retries=1,
+        model="Qwen3.6-35B-A3B-UD-IQ3_S",
+        temperature=1.0,
+        # max_tokens=2048,
+        # timeout=120,
+        # max_retries=1,
     )
     FREE_PROMPT = ChatPromptTemplate.from_messages([
         SystemMessage(content="""You are AI AUDIT BOT – a senior internal auditor with 17+ years FMCG experience.
@@ -189,4 +193,97 @@ Focus on related-party, payment terms, ageing, financial limits, and anomaly thr
         "audit_summary": audit_summary,
         "citations": citations,
         "log_hash": log_hash
+    }
+
+# ====================== ROBUST LLM-POWERED FINANCIAL STATEMENT DRAFTER ======================
+import pandas as pd
+import json
+from datetime import datetime
+import hashlib
+
+def load_tb_raw(tb_file) -> pd.DataFrame:
+    """Simple load + net calculation only."""
+    if tb_file.name.endswith('.xlsx'):
+        df = pd.read_excel(tb_file)
+    else:
+        df = pd.read_csv(tb_file)
+    df['period_net'] = df['period_credit'].fillna(0) - df['period_debit'].fillna(0)
+    df['closing_net'] = df['closing_credit'].fillna(0) - df['closing_debit'].fillna(0)
+    return df
+
+def llm_draft_financial_statements(df: pd.DataFrame, company_name: str = "Emami Agrotech Limited") -> dict:
+    """LLM drafts full statements with Manufacturing Account + Trading + P&L + BS + approx Cash Flow."""
+    summary_df = df.groupby('account_group').agg({
+        'period_net': 'sum',
+        'closing_net': 'sum',
+        'account_name': 'count'
+    }).round(2).reset_index()
+    summary_text = summary_df.to_string(index=False)
+    
+    prompt = f"""You are a senior CA with 17+ years FMCG internal audit experience at Emami Agrotech.
+Given the SAP Trial Balance grouped summary below, draft the **complete Indian manufacturing financial statements** in STRICT JSON format only.
+
+TB Summary:
+{summary_text}
+
+Required sections (use standard FMCG format):
+- Manufacturing Account (cost of production)
+- Trading Account
+- Profit & Loss Account
+- Balance Sheet
+- Cash Flow Statement (approximate from TB changes)
+
+Return ONLY valid JSON. No extra text.
+{{
+  "manufacturing": {{"Raw Materials Consumed": number, "Direct Expenses": number, "Manufacturing Overheads": number, "Cost of Production": number}},
+  "trading": {{"Sales": number, "Opening Stock": number, "COGS / Purchases": number, "Direct Expenses": number, "Closing Stock": number, "Gross Profit": number}},
+  "pl": {{"Gross Profit": number, "Other Income": number, "Indirect Expenses": number, "Depreciation": number, "Net Profit": number}},
+  "bs": {{"Fixed Assets (Net)": number, "Current Assets": number, "Total Assets": number, "Current Liabilities": number, "Borrowings": number, "Equity & Reserves": number, "Total Liabilities & Equity": number}},
+  "cash_flow_approx": {{"Operating Activities": number, "Investing Activities": number, "Financing Activities": number, "Net Cash Flow": number}},
+  "major_heads": [array of objects from summary]
+}}"""
+
+    chain = get_rag_chain()
+    response = chain.invoke({"context": "SAP Trial Balance data", "question": prompt})
+    
+    # Robust JSON extraction
+    raw_output = response.content if hasattr(response, "content") else str(response)
+    try:
+        json_str = raw_output.strip()
+        if "```json" in json_str:
+            json_str = json_str.split("```json")[1].split("```")[0].strip()
+        elif "```" in json_str:
+            json_str = json_str.split("```")[1].strip()
+        result = json.loads(json_str)
+    except Exception:
+        result = {"error": "JSON parse failed", "raw_llm_output": raw_output[:2000]}
+    
+    return result
+
+# Updated RAG audit report (works with new structure)
+def generate_financial_audit_report(drafted: dict, company_name: str = "Emami Agrotech Limited"):
+    query = f"""
+    Audit these LLM-drafted financial statements for {company_name}:
+    Manufacturing: {drafted.get('manufacturing', {})}
+    Trading: {drafted.get('trading', {})}
+    P&L: {drafted.get('pl', {})}
+    BS: {drafted.get('bs', {})}
+    Cash Flow (approx): {drafted.get('cash_flow_approx', {})}
+    Major heads: {drafted.get('major_heads', [])}
+    """
+    vectorstore = get_vectorstore()
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
+    retrieved_docs = retriever.invoke(query)
+    context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    chain = get_rag_chain()
+    response = chain.invoke({"context": context, "question": query})
+    audit_summary = response.content if hasattr(response, "content") else str(response)
+    citations = [f"{doc.metadata.get('source')} (page {doc.metadata.get('page', 'N/A')})" for doc in retrieved_docs]
+    log_hash = hashlib.sha256(audit_summary.encode()).hexdigest()[:16]
+    
+    return {
+        "audit_summary": audit_summary,
+        "citations": citations,
+        "log_hash": log_hash,
+        **drafted
     }
