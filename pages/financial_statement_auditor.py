@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.rag_engine import load_tb_raw, llm_draft_financial_statements, generate_financial_audit_report
 from datetime import datetime
 

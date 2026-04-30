@@ -10,13 +10,13 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage
-#from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 os.environ["LANGCHAIN_TRACING_V2"] = "false"       # comment out while using online AI Model
 os.environ["LANGCHAIN_API_KEY"] = "dummy"           # prevents any accidental trace, comment out while using online AI Model
 from langchain_openai import ChatOpenAI             # comment out while using online AI Model
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.documents import Document
-
+from utils.redis_cache import cache_rag_result
 load_dotenv()
 
 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -36,16 +36,18 @@ def _get_vectorstore_safe():
     except Exception as e:
         return None, str(e)
 
+def _get_llm():
+    if os.getenv("USE_LOCAL_LLM", "true").lower() == "false":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(base_url="http://127.0.0.1:8080/v1", api_key="llama.cpp",
+                          model="gemma-4-E2B-it-Q4_K_M.gguf", temperature=1.0)
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3,
+                                  google_api_key=os.getenv("GOOGLE_API_KEY"))
+
+@cache_rag_result(ttl_seconds=1800)
 def get_rag_chain():
-    llm = ChatOpenAI(
-        base_url="http://127.0.0.1:8080/v1",
-        api_key="llama.cpp",
-        model="Qwen3.6-35B-A3B-UD-IQ3_S",
-        temperature=1.0,
-        # max_tokens=2048,
-        # timeout=120,
-        # max_retries=1,
-    )
+    llm = _get_llm()
     RAG_PROMPT = ChatPromptTemplate.from_messages([
         SystemMessage(content="""You are AI AUDIT BOT – a Continuous Control Monitoring + Policy Compliance Agent for Emami Agrotech Limited.
 You are a senior internal auditor with 17+ years FMCG experience.
@@ -73,16 +75,9 @@ Answer:""")
     ])
     return RAG_PROMPT | llm
 
+@cache_rag_result(ttl_seconds=1800)
 def get_free_form_chain():
-    llm = ChatOpenAI(
-        base_url="http://127.0.0.1:8080/v1",
-        api_key="llama.cpp",
-        model="Qwen3.6-35B-A3B-UD-IQ3_S",
-        temperature=1.0,
-        # max_tokens=2048,
-        # timeout=120,
-        # max_retries=1,
-    )
+    llm = _get_llm()
     FREE_PROMPT = ChatPromptTemplate.from_messages([
         SystemMessage(content="""You are AI AUDIT BOT – a senior internal auditor with 17+ years FMCG experience.
 Answer questions concisely and directly. Use plain English. No fixed 5-section format unless asked.
@@ -271,7 +266,14 @@ def generate_financial_audit_report(drafted: dict, company_name: str = "Emami Ag
     Cash Flow (approx): {drafted.get('cash_flow_approx', {})}
     Major heads: {drafted.get('major_heads', [])}
     """
-    vectorstore = get_vectorstore()
+    vectorstore, db_error = _get_vectorstore_safe()
+    if vectorstore is None:
+        return {
+            "audit_summary": f"⚠️ **Policy database unavailable** — could not connect to Neon.\n\n`{db_error}`\n\nCheck your internet connection or verify the Neon project is active.",
+            "citations": [],
+            "log_hash": "offline",
+            **drafted
+        }
     retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
     retrieved_docs = retriever.invoke(query)
     context = "\n\n".join([doc.page_content for doc in retrieved_docs])

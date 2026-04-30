@@ -91,6 +91,7 @@ llm = ChatGoogleGenerativeAI(
 
 # ====================== PROMPT ======================
 from src.prompts import RAG_PROMPT
+from utils.redis_cache import save_session_to_redis, load_session_from_redis
 
 # ====================== DIRECTORIES & HISTORY ======================
 SAVED_CHATS_DIR = "saved_chats"
@@ -164,14 +165,17 @@ with st.sidebar:
 
         # Start fresh
         st.session_state.messages = []
+        save_session_to_redis("current_chat", st.session_state.messages)
         st.session_state.chat_title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         save_current_chat(st.session_state.messages)
+        save_session_to_redis("current_chat", st.session_state.messages)
         st.rerun()
 
     # Clear current
     if st.button("🗑️ Clear Current Chat"):
         st.session_state.messages = []
         save_current_chat(st.session_state.messages)
+        save_session_to_redis("current_chat", st.session_state.messages)
         st.rerun()
 
     # Export PDF
@@ -196,6 +200,7 @@ with st.sidebar:
                 st.session_state.messages = json.load(f)
             st.session_state.chat_title = selected.replace(".json", "")
             save_current_chat(st.session_state.messages)
+            save_session_to_redis("current_chat", st.session_state.messages)
             st.rerun()
 
     # Search in history
@@ -245,6 +250,7 @@ if uploaded_doc:
 # ====================== CHAT INPUT ======================
 if prompt := st.chat_input("Ask about policy, clause, contract..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
+    save_session_to_redis("current_chat", st.session_state.messages)
     with st.chat_message("user"):
         st.markdown(prompt)
 
@@ -270,3 +276,4 @@ if prompt := st.chat_input("Ask about policy, clause, contract..."):
 
     st.session_state.messages.append({"role": "assistant", "content": response.content})
     save_current_chat(st.session_state.messages)
+    save_session_to_redis("current_chat", st.session_state.messages)

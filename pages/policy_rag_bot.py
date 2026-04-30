@@ -5,12 +5,13 @@ from datetime import datetime
 from pathlib import Path   # ← ADD THIS LINE
 from utils.rag_engine import get_vectorstore, get_free_form_chain, get_rag_chain, add_documents_from_upload, add_documents_from_csv_or_excel_or_office, _get_vectorstore_safe
 from db_utils import log_rag_query
+from utils.redis_cache import save_session_to_redis, load_session_from_redis
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
 import io as io_module
 import tempfile
-
+from utils.redis_cache import save_session_to_redis, load_session_from_redis
 st.title("📋 AI Policy RAG Bot")
 st.caption("Continuous Control Monitoring + Policy Compliance Agent | 100% Audit Trail | Built by Ashok Sharma")
 
@@ -29,7 +30,7 @@ def save_current_chat(messages):
         json.dump(messages, f, ensure_ascii=False, indent=2)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = load_current_chat()
+    st.session_state.messages = load_session_from_redis("current_chat")
 if "chat_title" not in st.session_state:
     st.session_state.chat_title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
@@ -45,6 +46,7 @@ with st.sidebar:
                 json.dump(st.session_state.messages, f, ensure_ascii=False, indent=2)
             st.success(f"Old chat auto-saved as {filename}")
         st.session_state.messages = []
+        save_session_to_redis("current_chat", st.session_state.messages)
         st.session_state.chat_title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         save_current_chat(st.session_state.messages)
         st.rerun()
@@ -52,6 +54,7 @@ with st.sidebar:
     if st.button("🗑️ Clear Current Chat"):
         st.session_state.messages = []
         save_current_chat(st.session_state.messages)
+        save_session_to_redis("current_chat", st.session_state.messages)
         st.rerun()
 
     if st.button("📥 Export Current Chat to PDF"):
@@ -68,6 +71,7 @@ with st.sidebar:
                 st.session_state.messages = json.load(f)
             st.session_state.chat_title = selected.replace(".json", "")
             save_current_chat(st.session_state.messages)
+            save_session_to_redis("current_chat", st.session_state.messages)
             st.rerun()
 
     st.subheader("Search Chat History")
@@ -239,6 +243,7 @@ if prompt:
         user_content = f"{prompt}\n\n*Attachments: {names}*"
 
     st.session_state.messages.append({"role": "user", "content": user_content})
+    save_session_to_redis("current_chat", st.session_state.messages)
     with st.chat_message("user"):
         st.markdown(user_content)
 
@@ -278,4 +283,5 @@ Retrieved policy/contract documents:
 
     st.session_state.messages.append({"role": "assistant", "content": response.content})
     save_current_chat(st.session_state.messages)
+    save_session_to_redis("current_chat", st.session_state.messages)
     st.session_state.chat_attachment_widget_key += 1

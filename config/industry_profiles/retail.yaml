@@ -1,0 +1,8 @@
+industry: "Retail"
+modules_disabled: ["contract_management", "payroll_audit"]
+thresholds:
+  slow_moving_inventory_days: 60
+  days_overdue_critical: 45
+  inventory_shrinkage_warning_pct: 2.0
+compliance_focus: [gst_multiple_slabs, tds_194C, tds_194I]
+tds_high_risk: ["194C", "194I"]

@@ -1,0 +1,94 @@
+gst:
+  GSTR-1_monthly:
+    description: "Monthly outward supply (turnover >5 Cr)"
+    due_day_of_following_month: 11
+  GSTR-3B_category_1:
+    description: "Monthly summary return — 28 states"
+    due_day_of_following_month: 20
+  GSTR-3B_category_2:
+    due_day_of_following_month: 22
+  GSTR-3B_category_3:
+    due_day_of_following_month: 24
+  GSTR-9:
+    description: "Annual return"
+    due_date: "December 31 of following year"
+  late_fee_per_day:
+    cgst: 25
+    sgst: 25
+    igst: 50
+    max_cap: 10000
+
+tds:
+  general_deposit:
+    due_day_of_following_month: 7
+    march_exception: "April 30"
+  interest_late_deposit:
+    section_201_1a: 1.5
+    per_month: true
+  sections:
+    "194C": {description: "Contractor payments", rate_individual: 1.0, rate_company: 2.0, single_threshold: 30000, annual_threshold: 100000}
+    "194I": {description: "Rent - land/building", rate: 10.0, threshold: 240000}
+    "194J": {description: "Professional services", rate: 10.0, threshold: 30000}
+    "194H": {description: "Commission/brokerage", rate: 5.0, threshold: 15000}
+    "194A": {description: "Interest (non-bank)", rate: 10.0, threshold: 5000}
+    "192":  {description: "Salary", rate: "Slab rate"}
+    "195":  {description: "Non-resident payments", rate: "DTAA rate"}
+    "194N": {description: "Cash withdrawal >1Cr", rate: 2.0}
+  quarterly_returns:
+    Q1: "July 31"
+    Q2: "October 31"
+    Q3: "January 31"
+    Q4: "May 31"
+
+pf:
+  employee_rate: 12
+  employer_rate: 12
+  wage_ceiling: 15000
+  due_day_of_following_month: 15
+
+esi:
+  employee_rate: 0.75
+  employer_rate: 3.25
+  wage_ceiling: 21000
+  due_day_of_following_month: 15
+
+contract_labour:
+  registration_renewal: "Annual"
+  form_v_required: true
+  pf_esi_verification_required: true
+
+audit_committee:
+  companies_act_section: 177
+  sebi_lodr_regulation: 18
+  minimum_meetings_per_year: 4
+  mandatory_agenda_items:
+    - "Financial statements review"
+    - "Related party transactions"
+    - "Internal audit findings"
+    - "Internal control adequacy"
+
+payroll:
+  overtime_quarterly_max_hours: 50
+  advance_max_months_salary: 2
+  self_approval_blocked: true
+  alcohol_entertainment_blocked: true
+
+fixed_assets:
+  cwip_max_outstanding_months: 12
+  capex_approval_threshold: 100000
+  revenue_keywords: ["repair", "maintenance", "consumable", "amc", "whitewash", "cleaning"]
+  depreciation_rates:
+    "Plant & Machinery": 6.67
+    "Buildings (Factory)": 3.34
+    "Furniture & Fixtures": 10.0
+    "Computers": 33.33
+    "Vehicles": 9.5
+
+expense_policy:
+  grade_daily_limits:
+    "Grade A": 5000
+    "Grade B": 3000
+    "Grade C": 2000
+  max_claim_without_docs: 500
+  self_approval_blocked: true
+  alcohol_entertainment_blocked: true

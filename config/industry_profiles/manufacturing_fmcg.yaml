@@ -1,0 +1,10 @@
+industry: "Manufacturing / FMCG"
+modules_enabled: "all"
+thresholds:
+  slow_moving_inventory_days: 90
+  days_overdue_critical: 60
+  credit_utilization_warning_pct: 80
+  expense_daily_limit_grade_a: 5000
+  amc_vendor_concentration_pct: 40
+compliance_focus: [gst_full, tds_all_sections, pf, esi, contract_labour]
+tds_high_risk: ["194C", "194I", "194J"]

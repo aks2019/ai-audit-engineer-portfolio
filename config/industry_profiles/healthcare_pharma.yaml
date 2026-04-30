@@ -1,0 +1,8 @@
+industry: "Healthcare / Pharma"
+modules_enabled: "all"
+thresholds:
+  slow_moving_inventory_days: 30
+  shelf_life_warning_days: 180
+  days_overdue_critical: 45
+compliance_focus: [gst_multiple_slabs, tds_all, cdsco]
+tds_high_risk: ["194C", "194J", "194I"]

@@ -1,0 +1,8 @@
+industry: "IT Services"
+modules_disabled: ["inventory_anomaly", "contract_management"]
+thresholds:
+  days_overdue_critical: 45
+  expense_daily_limit_grade_a: 8000
+  amc_vendor_concentration_pct: 60
+compliance_focus: [gst_18pct, tds_194J_primary, tds_194C]
+tds_high_risk: ["194J", "194C", "194N"]

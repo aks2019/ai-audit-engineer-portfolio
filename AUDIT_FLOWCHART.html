@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Audit Engineer — Complete Audit Flow</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --orange: #f0883e;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --teal: #39d353;
+      --yellow: #e3b341;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1c2431 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 2.5rem 2rem 2rem;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #58a6ff, #bc8cff, #39d353);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.5rem;
+    }
+    .header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .badge-row {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid;
+    }
+    .badge-blue  { background: rgba(88,166,255,.15); border-color: #58a6ff; color: #58a6ff; }
+    .badge-green { background: rgba(63,185,80,.15);  border-color: #3fb950; color: #3fb950; }
+    .badge-purple{ background: rgba(188,140,255,.15);border-color: #bc8cff; color: #bc8cff; }
+    .badge-orange{ background: rgba(240,136,62,.15); border-color: #f0883e; color: #f0883e; }
+    .badge-red   { background: rgba(248,81,73,.15);  border-color: #f85149; color: #f85149; }
+
+    /* ── Nav Tabs ── */
+    .nav-tabs {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      padding: 1.25rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .tab-btn {
+      padding: 0.45rem 1.1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .tab-btn:hover, .tab-btn.active {
+      background: rgba(88,166,255,.15);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Content ── */
+    .content { padding: 2rem; max-width: 1600px; margin: 0 auto; }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .section-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-header h2 {
+      font-size: 1.4rem;
+      color: var(--text);
+      margin-bottom: 0.3rem;
+    }
+    .section-header p { color: var(--muted); font-size: 0.88rem; }
+
+    /* ── Mermaid wrappers ── */
+    .diagram-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      overflow-x: auto;
+    }
+    .diagram-card h3 {
+      font-size: 1rem;
+      color: var(--accent);
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .mermaid { min-width: 600px; }
+
+    /* ── Phase Legend Grid ── */
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .legend-card {
+      border-radius: 10px;
+      padding: 1rem;
+      border: 1px solid;
+    }
+    .lc-blue   { background: rgba(88,166,255,.08);  border-color: #1f4f7a; }
+    .lc-green  { background: rgba(63,185,80,.08);   border-color: #1a4a2a; }
+    .lc-purple { background: rgba(188,140,255,.08); border-color: #4a2a7a; }
+    .lc-orange { background: rgba(240,136,62,.08);  border-color: #7a4a1a; }
+    .lc-red    { background: rgba(248,81,73,.08);   border-color: #7a1a1a; }
+    .lc-teal   { background: rgba(57,211,83,.08);   border-color: #1a5a3a; }
+    .lc-yellow { background: rgba(227,179,65,.08);  border-color: #7a5a1a; }
+
+    .legend-card .lc-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 0.5rem;
+    }
+    .lc-blue   .lc-title { color: #58a6ff; }
+    .lc-green  .lc-title { color: #3fb950; }
+    .lc-purple .lc-title { color: #bc8cff; }
+    .lc-orange .lc-title { color: #f0883e; }
+    .lc-red    .lc-title { color: #f85149; }
+    .lc-teal   .lc-title { color: #39d353; }
+    .lc-yellow .lc-title { color: #e3b341; }
+
+    .legend-card ul {
+      list-style: none;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .legend-card ul li::before { content: "→ "; color: var(--accent); }
+
+    /* ── Module Table ── */
+    .module-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin-bottom: 2rem;
+    }
+    .module-table th {
+      text-align: left;
+      padding: 0.6rem 1rem;
+      border-bottom: 2px solid var(--border);
+      color: var(--accent);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .module-table td {
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      vertical-align: top;
+    }
+    .module-table tr:hover td { background: rgba(88,166,255,.04); color: var(--text); }
+    .module-table .phase-cell {
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    /* Risk band pills */
+    .pill {
+      display: inline-block;
+      padding: .1rem .55rem;
+      border-radius: 999px;
+      font-size: .72rem;
+      font-weight: 600;
+    }
+    .pill-red    { background:rgba(248,81,73,.2);  color:#f85149; }
+    .pill-orange { background:rgba(240,136,62,.2); color:#f0883e; }
+    .pill-yellow { background:rgba(227,179,65,.2); color:#e3b341; }
+    .pill-green  { background:rgba(63,185,80,.2);  color:#3fb950; }
+    .pill-blue   { background:rgba(88,166,255,.2); color:#58a6ff; }
+    .pill-purple { background:rgba(188,140,255,.2);color:#bc8cff; }
+
+    /* ── DB Schema ── */
+    .db-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .db-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .db-card-head {
+      background: rgba(88,166,255,.1);
+      padding: 0.6rem 1rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+    }
+    .db-card-body {
+      padding: 0.75rem 1rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .db-card-body .field {
+      padding: 0.2rem 0;
+      display: flex;
+      gap: 0.5rem;
+    }
+    .field-key { color: #e3b341; font-family: monospace; }
+    .field-type { color: #58a6ff; font-family: monospace; font-size: .72rem; }
+
+    /* ── Timeline ── */
+    .timeline { position: relative; padding-left: 2rem; margin-bottom: 2rem; }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 0.7rem;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, #58a6ff, #bc8cff, #3fb950);
+    }
+    .tl-item {
+      position: relative;
+      margin-bottom: 1.5rem;
+    }
+    .tl-dot {
+      position: absolute;
+      left: -1.65rem;
+      top: 0.2rem;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid;
+    }
+    .tl-dot-blue   { background:#0d1117; border-color:#58a6ff; }
+    .tl-dot-green  { background:#0d1117; border-color:#3fb950; }
+    .tl-dot-purple { background:#0d1117; border-color:#bc8cff; }
+    .tl-dot-orange { background:#0d1117; border-color:#f0883e; }
+    .tl-dot-red    { background:#0d1117; border-color:#f85149; }
+    .tl-dot-teal   { background:#0d1117; border-color:#39d353; }
+    .tl-dot-yellow { background:#0d1117; border-color:#e3b341; }
+
+    .tl-item .tl-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 0.3rem;
+    }
+    .tl-item .tl-desc {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .tl-item .tl-modules {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      margin-top: 0.4rem;
+    }
+    .tl-mod {
+      font-size: .72rem;
+      padding: .1rem .55rem;
+      border-radius: 4px;
+      background: rgba(88,166,255,.1);
+      border: 1px solid rgba(88,166,255,.3);
+      color: #58a6ff;
+      font-family: monospace;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .content { padding: 1rem; }
+      .diagram-card { padding: 1rem; }
+      .header h1 { font-size: 1.4rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ HEADER ═══════════════════════════════ -->
+<div class="header">
+  <h1>AI Audit Engineer — Complete Audit Flowchart</h1>
+  <p>End-to-end flow across all 26 modules · Powered by Gemini 1.5 Pro · Streamlit · SQLite</p>
+  <div class="badge-row">
+    <span class="badge badge-blue">26 Audit Modules</span>
+    <span class="badge badge-green">100% Population Testing</span>
+    <span class="badge badge-purple">RAG + LLM</span>
+    <span class="badge badge-orange">IsolationForest + XGBoost</span>
+    <span class="badge badge-red">SEBI LODR · Companies Act</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ NAV ═══════════════════════════════ -->
+<div class="nav-tabs">
+  <button class="tab-btn active" onclick="showTab('overview')">Master Flow</button>
+  <button class="tab-btn" onclick="showTab('detection')">Detection Phase</button>
+  <button class="tab-btn" onclick="showTab('dataflow')">Data Flow</button>
+  <button class="tab-btn" onclick="showTab('workflow')">Workflow Lifecycle</button>
+  <button class="tab-btn" onclick="showTab('reporting')">Reporting Phase</button>
+  <button class="tab-btn" onclick="showTab('modules')">All 26 Modules</button>
+  <button class="tab-btn" onclick="showTab('database')">Database Schema</button>
+  <button class="tab-btn" onclick="showTab('timeline')">Audit Cycle Timeline</button>
+</div>
+
+<!-- ═══════════════════════════════ CONTENT ═══════════════════════════════ -->
+<div class="content">
+
+  <!-- ────────── TAB 1: MASTER FLOW ────────── -->
+  <div class="section active" id="tab-overview">
+    <div class="section-header">
+      <h2>Master Audit Flow</h2>
+      <p>Complete top-level flow showing all phases from Setup → Detection → Workflow → Reporting → Fieldwork</p>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Complete Audit Lifecycle (All 26 Modules)</h3>
+      <div class="mermaid">
+flowchart TD
+    START(["🚀 START\nAudit Engagement"]):::startEnd
+
+    subgraph SETUP["⚙️  PHASE 0 — SETUP & CONFIGURATION"]
+        direction TB
+        A1["app.py\nHome Page"]:::app
+        A2["Select Industry Profile\nManufacturing / IT / Healthcare\nRetail / Financial Services"]:::config
+        A3["config/industry_profiles/*.yaml\nModule visibility · Thresholds"]:::config
+        A4["config/compliance_calendar.yaml\nGST · TDS · PF/ESI · Depreciation Rates"]:::config
+        A5["utils/column_mapper.py\nSAP Field Auto-Mapping\nWRBTR→amount · LIFNR→vendor"]:::util
+    end
+
+    subgraph INGEST["📥  PHASE 1 — DATA INGESTION"]
+        direction TB
+        B1["Upload SAP Export\nCSV / Excel (FBL1N, MB52, PA30…)"]:::input
+        B2["Column Mapping UI\nAuto-suggest + User Confirm"]:::util
+        B3["Data Preprocessing\nRename · Fill NaN · Type Cast"]:::util
+    end
+
+    subgraph DETECT["🔍  PHASE 2 — DETECTION (13 Modules)"]
+        direction LR
+        C1["P1 Payment\nAnomaly"]:::detect
+        C2["P5 BRS\nRecon"]:::detect
+        C3["P6 Receivables\n& Bad Debt"]:::detect
+        C4["P8 GST/TDS\nCompliance"]:::detect
+        C5["P9 Related\nParty"]:::detect
+        C6["P10 Duplicate\nInvoice"]:::detect
+        C7["P11 Inventory\nAnomaly"]:::detect
+        C8["P12 Fixed\nAssets"]:::detect
+        C9["P13 Expense\nClaims"]:::detect
+        C10["P18 Payroll\nAudit"]:::detect
+        C11["P19 Sales\nRevenue"]:::detect
+        C12["P20 ITGC/SAP\nAccess"]:::detect
+        C13["P21 Contract\nMgmt"]:::detect
+    end
+
+    subgraph AI["🤖  PHASE 3 — AI SCORING ENGINE"]
+        direction TB
+        D1["IsolationForest\n(Unsupervised Anomaly)"]:::ai
+        D2["XGBoost\n(Semi-Supervised Refine)"]:::ai
+        D3["SHAP\n(Explainability)"]:::ai
+        D4["Rule-Based Checks\nBenford's Law · Policy Violations"]:::ai
+    end
+
+    subgraph TRAIL["💾  PHASE 4 — AUDIT TRAIL"]
+        direction TB
+        E1[("SQLite\naudit.db\naudit_findings table")]:::db
+        E2["base_audit_check.py\nlog_to_db()\nRisk Band: CRITICAL/HIGH/MEDIUM/LOW"]:::util
+    end
+
+    subgraph POLICY["📚  PHASE 5 — POLICY LOOKUP (RAG)"]
+        direction TB
+        F1["P2 Policy RAG Bot"]:::rag
+        F2["utils/rag_engine.py\npgvector + Gemini 1.5 Pro"]:::rag
+        F3["17 Pre-indexed Audit\nChecklists & Policies"]:::rag
+    end
+
+    subgraph SPECIAL["🔬  SPECIAL ANALYSIS MODULES"]
+        direction LR
+        G1["P4 Financial\nStatement Auditor"]:::special
+        G2["P14 Audit\nPlanning Engine"]:::special
+        G3["P23 NLP Document\nIntelligence"]:::special
+        G4["P25 Statistical\nSampling"]:::special
+    end
+
+    subgraph WORKFLOW["🔄  PHASE 6 — WORKFLOW & TRIAGE"]
+        direction TB
+        H1["P22 Audit Workflow Engine\nFinding Status Lifecycle"]:::workflow
+        H2["Open → In Progress\n→ Mgmt Response\n→ Verified → Closed"]:::workflow
+        H3["SLA Tracking\n(Default 15 days)"]:::workflow
+        H4["workflow_history table\nFull Audit Trail"]:::db
+    end
+
+    subgraph RISK["📊  PHASE 7 — RISK & DASHBOARDS"]
+        direction LR
+        I1["P7 Unified\nDashboard"]:::report
+        I2["P15 Risk\nRegister\n5×5 Heat Map"]:::report
+        I3["P24 Multi-Company\nDashboard"]:::report
+        I4["P26 Audit KPI\nDashboard"]:::report
+    end
+
+    subgraph REPORTING["📋  PHASE 8 — EXECUTIVE REPORTING"]
+        direction LR
+        J1["P16 Audit Report\nCenter\nCFO-Ready MIS + Excel"]:::finalrep
+        J2["P17 Audit\nCommittee Pack\nBoard PDF (§177/LODR §18)"]:::finalrep
+    end
+
+    END(["✅ END\nNext Audit Period"]):::startEnd
+
+    START --> SETUP
+    SETUP --> INGEST
+    INGEST --> DETECT
+    DETECT --> AI
+    AI --> TRAIL
+    TRAIL --> POLICY
+    TRAIL --> SPECIAL
+    TRAIL --> WORKFLOW
+    WORKFLOW --> RISK
+    RISK --> REPORTING
+    REPORTING --> END
+    END -->|"Next Period"| INGEST
+
+    classDef startEnd fill:#1f4f7a,stroke:#58a6ff,color:#e6edf3,rx:20
+    classDef app     fill:#1c2a3a,stroke:#58a6ff,color:#e6edf3
+    classDef config  fill:#1a2a1a,stroke:#3fb950,color:#e6edf3
+    classDef util    fill:#2a2a1a,stroke:#e3b341,color:#e6edf3
+    classDef input   fill:#2a1a1a,stroke:#f0883e,color:#e6edf3
+    classDef detect  fill:#1a1a2a,stroke:#bc8cff,color:#e6edf3
+    classDef ai      fill:#1a2a2a,stroke:#39d353,color:#e6edf3
+    classDef db      fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+    classDef rag     fill:#1a2a3a,stroke:#58a6ff,color:#e6edf3
+    classDef special fill:#2a1a2a,stroke:#bc8cff,color:#e6edf3
+    classDef workflow fill:#2a2a1a,stroke:#f0883e,color:#e6edf3
+    classDef report  fill:#1a2a2a,stroke:#39d353,color:#e6edf3
+    classDef finalrep fill:#1f3a1a,stroke:#3fb950,color:#e6edf3
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── TAB 2: DETECTION PHASE ────────── -->
+  <div class="section" id="tab-detection">
+    <div class="section-header">
+      <h2>Detection Phase — Deep Dive</h2>
+      <p>How each of the 13 detection modules processes data, runs AI scoring, and logs findings</p>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Detection Module Internal Flow (Common Pattern)</h3>
+      <div class="mermaid">
+flowchart LR
+    UP["📤 Upload\nSAP CSV/Excel"]:::input
+
+    subgraph MAP["Column Mapping"]
+        M1["column_mapper.py\nSYNONYMS dict\nAuto-suggest"]:::util
+        M2["User Confirms\nDropdown UI"]:::util
+        M3["Rename to Internal\nStandard Names\namount, vendor_name…"]:::util
+    end
+
+    subgraph PREP["Pre-processing"]
+        P1["Fill NaN / Coerce Types"]:::util
+        P2["Derive Features\ndays_overdue, amount_bucket…"]:::util
+    end
+
+    subgraph SCORE["AI Scoring Engine"]
+        S1["IsolationForest\ncontamination=0.05\nUnsupervised Outlier"]:::ai
+        S2["Pseudo-Labels\nfrom Isolation Scores"]:::ai
+        S3["XGBoost Classifier\nRefine Probability"]:::ai
+        S4["SHAP Values\nExplain Each Flag"]:::ai
+    end
+
+    subgraph RULES["Rule-Based Layer"]
+        R1["Benford's Law\nFirst-Digit Analysis"]:::rule
+        R2["Policy Checks\nVia compliance_calendar.yaml"]:::rule
+        R3["Threshold Checks\nIndustry-Profile YAML"]:::rule
+    end
+
+    subgraph OUTPUT["Flagged Output"]
+        O1["anomaly_score\nanomaly_probability\nrisk_band (CRITICAL/HIGH/MEDIUM/LOW)"]:::out
+        O2["SHAP Top-3\nExplanations per Row"]:::out
+    end
+
+    subgraph LOG["Auto-Log to DB"]
+        L1["base_audit_check.py\nlog_to_db()"]:::util
+        L2[("audit_findings\nSQLite")]:::db
+    end
+
+    subgraph RAG["Optional RAG Report"]
+        G1["rag_engine.py\nQuery Policy Vectorstore"]:::rag
+        G2["Gemini 1.5 Pro\nDraft Audit Observation"]:::rag
+        G3["PDF Export\nwith Citations"]:::rag
+    end
+
+    UP --> MAP
+    MAP --> PREP
+    PREP --> SCORE
+    PREP --> RULES
+    SCORE --> OUTPUT
+    RULES --> OUTPUT
+    OUTPUT --> LOG
+    LOG --> RAG
+
+    classDef input fill:#2a1a1a,stroke:#f0883e,color:#e6edf3
+    classDef util  fill:#2a2a1a,stroke:#e3b341,color:#e6edf3
+    classDef ai    fill:#1a2a2a,stroke:#39d353,color:#e6edf3
+    classDef rule  fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+    classDef out   fill:#1c2a3a,stroke:#58a6ff,color:#e6edf3
+    classDef db    fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+    classDef rag   fill:#1a2a3a,stroke:#bc8cff,color:#e6edf3
+      </div>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ All 13 Detection Modules — Individual Flows</h3>
+      <div class="mermaid">
+flowchart TD
+    DB[("audit_findings\nSQLite")]:::db
+
+    P1["P1 — Payment Anomaly Detector\nFBL1N vendor payment export\nIsolationForest + XGBoost + SHAP\nAgeing buckets · related_party_risk"]:::det1
+    P5["P5 — BRS Reconciliation\nBank statement + GL extract\nFuzzy match · stale cheques\nUnmatched items report"]:::det2
+    P6["P6 — Receivables & Bad Debt\nAR subledger\nXGBoost classifier · DSO calc\nDoubtful debt classification"]:::det3
+    P8["P8 — GST/TDS Compliance\nGSTR-2A + Books GL\nYAML-driven rates · rule-based\nMismatch + TDS rate violations"]:::det4
+    P9["P9 — Related Party Monitor\nRP transaction list\nNetworkX graph analysis\nConcentration ratio map"]:::det5
+    P10["P10 — Duplicate Invoice Detector\nInvoice register\nFuzzy Levenshtein matching\nPO variance flags"]:::det6
+    P11["P11 — Inventory Anomaly\nMB52 inventory dump\nK-Means clustering\nSlow-moving · obsolete · expiry"]:::det7
+    P12["P12 — Fixed Asset Auditor\nFA master + depreciation schedule\nAutoencoder + rule-based\nDepreciation gap · CWIP >12mo"]:::det8
+    P13["P13 — Expense Claim Auditor\nExpense claims register\nPolicy YAML rule-based\nGrade limit · SOD violations"]:::det9
+    P18["P18 — Payroll Audit\nPayroll roster\nRule-based + ML\nGhost employees · PF/ESI mismatch"]:::det10
+    P19["P19 — Sales Revenue Auditor\nSales register + credit notes\nInd AS 115 gap · clustering\nRevenue recognition issues"]:::det11
+    P20["P20 — ITGC & SAP Access\nSUIM user access dump\nBuilt-in SoD conflict matrix\nSoD breaches · SAP_ALL · generic IDs"]:::det12
+    P21["P21 — Contract Management\nContract master + GRN receipts\nFuzzy matching + rule-based\nExpired · LD non-recovery · concentration"]:::det13
+
+    P1  --> DB
+    P5  --> DB
+    P6  --> DB
+    P8  --> DB
+    P9  --> DB
+    P10 --> DB
+    P11 --> DB
+    P12 --> DB
+    P13 --> DB
+    P18 --> DB
+    P19 --> DB
+    P20 --> DB
+    P21 --> DB
+
+    classDef db   fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+    classDef det1  fill:#1a1a2a,stroke:#58a6ff,color:#c9d1d9
+    classDef det2  fill:#1a2a1a,stroke:#3fb950,color:#c9d1d9
+    classDef det3  fill:#2a1a1a,stroke:#f0883e,color:#c9d1d9
+    classDef det4  fill:#1a2a2a,stroke:#39d353,color:#c9d1d9
+    classDef det5  fill:#2a2a1a,stroke:#e3b341,color:#c9d1d9
+    classDef det6  fill:#1a1a2a,stroke:#bc8cff,color:#c9d1d9
+    classDef det7  fill:#1a2a1a,stroke:#58a6ff,color:#c9d1d9
+    classDef det8  fill:#2a1a1a,stroke:#f85149,color:#c9d1d9
+    classDef det9  fill:#1a2a2a,stroke:#3fb950,color:#c9d1d9
+    classDef det10 fill:#2a2a1a,stroke:#f0883e,color:#c9d1d9
+    classDef det11 fill:#1a1a2a,stroke:#e3b341,color:#c9d1d9
+    classDef det12 fill:#1a2a1a,stroke:#bc8cff,color:#c9d1d9
+    classDef det13 fill:#2a1a1a,stroke:#58a6ff,color:#c9d1d9
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── TAB 3: DATA FLOW ────────── -->
+  <div class="section" id="tab-dataflow">
+    <div class="section-header">
+      <h2>Data Flow Diagram</h2>
+      <p>How data moves between modules, utilities, databases, and external services</p>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Complete Data Flow Architecture</h3>
+      <div class="mermaid">
+flowchart TB
+    subgraph EXTERNAL["🌐 External / User Inputs"]
+        SAP["SAP Exports\nFBL1N · MB52 · PA30\nSUIM · Contract Master"]:::ext
+        DOCS["Documents\nPDF · DOCX · TXT\nEmails · Board Papers"]:::ext
+        TB["Trial Balance\nCSV/Excel"]:::ext
+        RP["RAG Policy\nUploads (PDF)"]:::ext
+    end
+
+    subgraph UTILS["⚙️ Utility Layer"]
+        CM["column_mapper.py\nSAP→Internal Name\nMapping Profiles"]:::util
+        CL["compliance_loader.py\nRead YAML Configs\nGST/TDS/PF Rates"]:::util
+        IF["industry_filter.py\nModule Visibility\nThreshold Overrides"]:::util
+        BAC["base_audit_check.py\nAbstract Plugin Base\nlog_to_db()"]:::util
+        RAG["rag_engine.py\nHuggingFace Embeddings\npgvector + Gemini API"]:::util
+    end
+
+    subgraph CONFIG["📁 Config Files"]
+        CC["compliance_calendar.yaml\nGST · TDS · PF/ESI\nDepreciation Rates"]:::cfg
+        IP["industry_profiles/*.yaml\n5 Industry Profiles\nModule Flags"]:::cfg
+    end
+
+    subgraph VECTOR["🔮 Vector Store"]
+        PG["pgvector\nNeon PostgreSQL\n17 Checklists Indexed"]:::vec
+    end
+
+    subgraph AI_ENG["🤖 AI / ML Engines"]
+        ISO["IsolationForest\nScikit-Learn"]:::ai
+        XGB["XGBoost\nClassifier"]:::ai
+        SHAP2["SHAP\nExplainer"]:::ai
+        NX["NetworkX\nGraph Analysis"]:::ai
+        KM["K-Means\nClustering"]:::ai
+        GEM["Gemini 1.5 Pro\nGoogle AI API"]:::ai
+    end
+
+    subgraph DB["💾 SQLite — audit.db"]
+        AF[("audit_findings\n13 detection modules write here")]:::db
+        WH[("workflow_history\nStatus transitions log")]:::db
+        MR[("management_responses\nBoard ATR responses")]:::db
+        SR[("sampling_runs\nStatistical sample log")]:::db
+        KPI[("audit_kpi\nMonthly KPI snapshots")]:::db
+    end
+
+    subgraph READS["📊 Read-Only Consumers"]
+        R7["P7 Unified Dashboard"]:::rdr
+        R15["P15 Risk Register"]:::rdr
+        R16["P16 Report Center"]:::rdr
+        R17["P17 Committee Pack"]:::rdr
+        R22["P22 Workflow Engine"]:::rdr
+        R24["P24 Multi-Company"]:::rdr
+        R26["P26 KPI Dashboard"]:::rdr
+    end
+
+    subgraph OUTPUTS["📤 Outputs"]
+        XLSX["Excel Workbook\nPer-Area Sheets"]:::out
+        PDF["Board PDF\nMIS Report · Committee Pack"]:::out
+        CSV["Sample CSV\nFor Fieldwork"]:::out
+        CHART["Dashboards\nCharts · Heat Maps · KPIs"]:::out
+    end
+
+    SAP  --> CM
+    TB   --> GEM
+    DOCS --> GEM
+    RP   --> RAG
+    CM   --> ISO
+    CM   --> XGB
+    CL   --> CC
+    IF   --> IP
+    ISO  --> SHAP2
+    XGB  --> SHAP2
+    SHAP2 --> BAC
+    NX   --> BAC
+    KM   --> BAC
+    BAC  --> AF
+    RAG  --> PG
+    GEM  --> AF
+    AF   --> WH
+    AF   --> MR
+    AF   --> R7 & R15 & R16 & R17 & R22 & R24 & R26
+    WH   --> R22
+    MR   --> R17
+    SR   --> R26
+    KPI  --> R26
+    R16  --> XLSX & PDF
+    R17  --> PDF
+    R15  --> CSV
+    R7 & R15 & R24 & R26 --> CHART
+
+    classDef ext  fill:#2a1a0a,stroke:#f0883e,color:#e6edf3
+    classDef util fill:#2a2a1a,stroke:#e3b341,color:#e6edf3
+    classDef cfg  fill:#1a2a1a,stroke:#3fb950,color:#e6edf3
+    classDef vec  fill:#1a1a2a,stroke:#58a6ff,color:#e6edf3
+    classDef ai   fill:#1a2a2a,stroke:#39d353,color:#e6edf3
+    classDef db   fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+    classDef rdr  fill:#1c2a3a,stroke:#58a6ff,color:#e6edf3
+    classDef out  fill:#1a3a1a,stroke:#3fb950,color:#e6edf3
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── TAB 4: WORKFLOW ────────── -->
+  <div class="section" id="tab-workflow">
+    <div class="section-header">
+      <h2>Workflow & Finding Lifecycle</h2>
+      <p>How audit findings move through status transitions, SLA tracking, and management response</p>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Finding Status Lifecycle (P22 — Audit Workflow Engine)</h3>
+      <div class="mermaid">
+stateDiagram-v2
+    [*] --> Open : log_to_db()\nDetection Module fires
+    Open --> InProgress : Auditor assigns owner\nSets SLA deadline (15 days)
+    InProgress --> ManagementResponse : Auditor sends\nobservation memo
+    ManagementResponse --> Verified : Management provides\naction plan + due date
+    Verified --> Closed : Auditor verifies\nremediation complete
+    InProgress --> Closed : Low-risk finding\ndirect close
+    Closed --> [*]
+
+    Open --> Escalated : SLA breached\n(sla_deadline < TODAY)
+    Escalated --> InProgress : Re-assigned
+    ManagementResponse --> Escalated : No response\n> 30 days
+
+    note right of Open
+        Risk Band set:
+        CRITICAL / HIGH / MEDIUM / LOW
+        Amount at Risk captured
+        Checklist Ref logged
+    end note
+
+    note right of Closed
+        days_to_close calculated
+        KPI updated
+        Board ATR updated
+    end note
+      </div>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Workflow Engine DB Interactions</h3>
+      <div class="mermaid">
+flowchart LR
+    DETECT["Detection Module\n(Any of 13 modules)"]:::src
+
+    subgraph WF["P22 — Workflow Engine"]
+        direction TB
+        VIEW["Filter Findings\nStatus · Area · Assigned To"]:::wf
+        EXPAND["Expand Finding Card\nID · Risk Band · Amount\nVendor · Checklist Ref"]:::wf
+        FORM["Update Form\nNew Status · SLA Date\nAssignee · Comment"]:::wf
+        SLA["SLA Breach Check\nsla_deadline < TODAY\nstatus != Closed"]:::wf
+    end
+
+    subgraph DB2["SQLite — audit.db"]
+        AF2[("audit_findings\nStatus · SLA · Assignee")]:::db
+        WH2[("workflow_history\nfinding_id · old_status\nnew_status · changed_by\nchanged_at · comment")]:::db
+        MR2[("management_responses\nfinding_id · response\naction_owner · due_date")]:::db
+    end
+
+    DETECT -->|"INSERT finding\nstatus='Open'"| AF2
+    AF2 --> VIEW
+    VIEW --> EXPAND
+    EXPAND --> FORM
+    FORM -->|"UPDATE audit_findings\nSET status=?\nsla_deadline=?\nassigned_to=?"| AF2
+    FORM -->|"INSERT workflow_history\nold→new status"| WH2
+    FORM -->|"Save Mgmt Response"| MR2
+    SLA -->|"Red Alert if breached"| EXPAND
+
+    classDef src fill:#1a1a2a,stroke:#bc8cff,color:#e6edf3
+    classDef wf  fill:#2a2a1a,stroke:#e3b341,color:#e6edf3
+    classDef db  fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── TAB 5: REPORTING ────────── -->
+  <div class="section" id="tab-reporting">
+    <div class="section-header">
+      <h2>Reporting & Governance Phase</h2>
+      <p>How findings are aggregated, analyzed, and surfaced to management and board</p>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Reporting Flow — From Findings to Board</h3>
+      <div class="mermaid">
+flowchart TD
+    DB3[("audit_findings\nSQLite")]:::db
+
+    subgraph DASH["Dashboards"]
+        D7["P7 — Unified Dashboard\nRisk Gauge · 30-day Trend\nVendor Heat Map\nCompliance Calendar"]:::dash
+        D15["P15 — Risk Register\n5×5 Risk Heat Map\n(Area × Risk Band)\nQuarterly Priority Plan\nCSV Download"]:::dash
+        D24["P24 — Multi-Company\nCompany/Plant Selectors\nGroup Bar Chart\nPlant×Area Heat Map\nAmount Pie Chart"]:::dash
+        D26["P26 — Audit KPI Dashboard\nClosure Rate by Area\nAvg Days to Close\nFindings Per Month Trend\nCritical Findings Count"]:::dash
+    end
+
+    subgraph SPECIAL2["Special Analysis"]
+        S14["P14 — Audit Planning Engine\nChecklist Coverage %\nGemini LLM Annual Plan\nRisk-Based Prioritization"]:::spec
+        S25["P25 — Statistical Sampling\nMUS · Simple Random\nCell · Stratified\nSample CSV for Fieldwork"]:::spec
+    end
+
+    subgraph EXEC["Executive Reporting"]
+        E16["P16 — Audit Report Center\nTimeline Chart\nLLM Executive Summary\nExcel Workbook (per-area sheets)\nCFO-Ready MIS PDF (6 sections)"]:::exec
+        E17["P17 — Audit Committee Pack\nATR (Prior Period Review)\nNew Critical Observations\nEditable Mgmt Responses\nBoard Escalation Items\nPDF Export\n(Companies Act §177 · SEBI LODR §18)"]:::exec
+    end
+
+    subgraph OUT2["Final Outputs"]
+        O1["Excel Workbook\nOne Sheet per Audit Area"]:::out
+        O2["MIS PDF\nCFO-Ready 6-Section Report"]:::out
+        O3["Board PDF\nAudit Committee Pack"]:::out
+        O4["Risk Matrix\nHeat Map + CSV"]:::out
+        O5["Sample CSV\nFor Fieldwork"]:::out
+    end
+
+    DB3 --> D7 & D15 & D24 & D26
+    DB3 --> S14 & S25
+    DB3 --> E16 & E17
+    D15 --> O4
+    S25 --> O5
+    E16 --> O1 & O2
+    E17 --> O3
+
+    classDef db   fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+    classDef dash fill:#1a2a2a,stroke:#39d353,color:#e6edf3
+    classDef spec fill:#1a1a2a,stroke:#58a6ff,color:#e6edf3
+    classDef exec fill:#1a3a1a,stroke:#3fb950,color:#e6edf3
+    classDef out  fill:#2a3a1a,stroke:#3fb950,color:#e6edf3
+      </div>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ P17 Audit Committee Pack — Internal Flow</h3>
+      <div class="mermaid">
+flowchart LR
+    AF3[("audit_findings")]:::db
+    MR3[("management_responses")]:::db
+
+    subgraph PACK["P17 — Audit Committee Pack"]
+        SEC1["Section 1\nATR (Action Taken Report)\nPrior period findings + status"]:::sec
+        SEC2["Section 2\nNew Critical Observations\nHIGH + CRITICAL from current period"]:::sec
+        SEC3["Section 3\nManagement Responses\nEditable text · Owner · Due Date\n→ Saved to DB"]:::sec
+        SEC4["Section 4\nBoard Escalation\nChronic findings\n(Same issue >1 period, still Open)"]:::sec
+        XPRT["PDF Export\n(Companies Act §177\nSEBI LODR §18)"]:::out
+    end
+
+    AF3 --> SEC1 & SEC2 & SEC4
+    MR3 --> SEC3
+    SEC3 -->|"Save Response"| MR3
+    SEC1 & SEC2 & SEC3 & SEC4 --> XPRT
+
+    classDef db  fill:#2a1a2a,stroke:#f85149,color:#e6edf3
+    classDef sec fill:#1a2a3a,stroke:#58a6ff,color:#e6edf3
+    classDef out fill:#1a3a1a,stroke:#3fb950,color:#e6edf3
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── TAB 6: ALL MODULES ────────── -->
+  <div class="section" id="tab-modules">
+    <div class="section-header">
+      <h2>All 26 Modules — Reference Table</h2>
+      <p>Complete listing of every module, its phase, engine, inputs, and outputs</p>
+    </div>
+
+    <div class="legend-grid">
+      <div class="legend-card lc-blue">
+        <div class="lc-title">Phase 1 — Detection (13)</div>
+        <ul><li>100% Population Testing</li><li>IsolationForest + XGBoost</li><li>SHAP Explainability</li><li>Auto-log to audit_findings</li></ul>
+      </div>
+      <div class="legend-card lc-purple">
+        <div class="lc-title">Phase 2 — Special Analysis (4)</div>
+        <ul><li>LLM-powered insights</li><li>Statistical Sampling</li><li>NLP Document Mining</li><li>Audit Planning</li></ul>
+      </div>
+      <div class="legend-card lc-green">
+        <div class="lc-title">Phase 3 — Dashboards (4)</div>
+        <ul><li>Read-only from audit.db</li><li>Risk Heat Maps</li><li>KPI Tracking</li><li>Multi-Company View</li></ul>
+      </div>
+      <div class="legend-card lc-orange">
+        <div class="lc-title">Phase 4 — Reporting (3)</div>
+        <ul><li>Board-ready outputs</li><li>CFO MIS PDF</li><li>Excel Workbooks</li><li>SEBI/Companies Act compliant</li></ul>
+      </div>
+      <div class="legend-card lc-red">
+        <div class="lc-title">Phase 5 — Governance (2)</div>
+        <ul><li>Workflow lifecycle</li><li>SLA tracking</li><li>Management responses</li><li>Board escalation</li></ul>
+      </div>
+      <div class="legend-card lc-teal">
+        <div class="lc-title">AI/LLM Modules (4)</div>
+        <ul><li>Gemini 1.5 Pro</li><li>pgvector RAG</li><li>Policy Q&amp;A bot</li><li>Financial Statement AI</li></ul>
+      </div>
+    </div>
+
+    <table class="module-table">
+      <thead>
+        <tr>
+          <th>Module</th>
+          <th>Page</th>
+          <th>Phase</th>
+          <th>Engine</th>
+          <th>Key Input</th>
+          <th>Key Output</th>
+          <th>Writes to DB</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>P1</b> Payment Anomaly</td><td>anomaly_detector.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>IsolationForest + XGBoost + SHAP</td><td>FBL1N vendor payments</td><td>Risk score · ageing buckets</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P2</b> Policy RAG Bot</td><td>policy_rag_bot.py</td><td class="phase-cell" style="color:#bc8cff">LLM/RAG</td><td>pgvector + Gemini 1.5 Pro</td><td>Chat + PDF uploads</td><td>Policy answers + citations</td><td><span class="pill pill-green">No DB write</span></td></tr>
+        <tr><td><b>P3</b> Dynamic Audit Builder</td><td>dynamic_audit_builder.py</td><td class="phase-cell" style="color:#e3b341">Config</td><td>YAML template selector</td><td>Industry profile selection</td><td>Audit checklist + column hints</td><td><span class="pill pill-green">No DB write</span></td></tr>
+        <tr><td><b>P4</b> Financial Statement Auditor</td><td>financial_statement_auditor.py</td><td class="phase-cell" style="color:#bc8cff">LLM/RAG</td><td>Gemini 1.5 Pro + RAG</td><td>Trial Balance CSV</td><td>Mfg A/c · Trading · P&L · BS · CF</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P5</b> BRS Reconciliation</td><td>brs_reconciliation.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Fuzzy match + outlier detection</td><td>Bank statement + GL extract</td><td>Unmatched items · stale cheques</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P6</b> Receivables & Bad Debt</td><td>receivables_bad_debt.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>XGBoost classifier</td><td>AR subledger</td><td>Doubtful debts · DSO trends</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P7</b> Unified Dashboard</td><td>unified_dashboard.py</td><td class="phase-cell" style="color:#39d353">Dashboard</td><td>SQLite reads</td><td>audit_findings DB</td><td>Risk gauge · heat map</td><td><span class="pill pill-green">Read-only</span></td></tr>
+        <tr><td><b>P8</b> GST/TDS Compliance</td><td>gst_tds_compliance.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Rule-based (YAML-driven rates)</td><td>GSTR-2A + Books GL</td><td>Mismatches · TDS violations</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P9</b> Related Party Monitor</td><td>related_party_monitor.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>NetworkX graph analysis</td><td>RP transaction list</td><td>Network map · concentration ratio</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P10</b> Duplicate Invoice</td><td>duplicate_invoice_detector.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Fuzzy Levenshtein matching</td><td>Invoice register</td><td>Likely duplicates · PO variance</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P11</b> Inventory Anomaly</td><td>inventory_anomaly.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>K-Means clustering</td><td>MB52 inventory dump</td><td>Slow-moving · obsolete · expiry</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P12</b> Fixed Asset Auditor</td><td>fixed_asset_auditor.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Autoencoder + rule-based</td><td>FA master + depreciation</td><td>Depreciation gap · CWIP >12mo</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P13</b> Expense Claim Auditor</td><td>expense_claim_auditor.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Rule-based (policy YAML)</td><td>Expense claims register</td><td>Grade limit · SOD violations</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P14</b> Audit Planning Engine</td><td>audit_planning_engine.py</td><td class="phase-cell" style="color:#bc8cff">LLM/RAG</td><td>Gemini 1.5 Pro</td><td>SQLite findings summary</td><td>Checklist coverage · Annual plan</td><td><span class="pill pill-green">Read-only</span></td></tr>
+        <tr><td><b>P15</b> Risk Register</td><td>risk_register.py</td><td class="phase-cell" style="color:#39d353">Dashboard</td><td>SQLite reads + scoring</td><td>audit_findings DB</td><td>5×5 heat map · priority plan</td><td><span class="pill pill-green">Read-only</span></td></tr>
+        <tr><td><b>P16</b> Audit Report Center</td><td>audit_report_center.py</td><td class="phase-cell" style="color:#3fb950">Reporting</td><td>SQLite + Gemini LLM</td><td>audit_findings DB</td><td>Excel workbook · MIS PDF</td><td><span class="pill pill-green">Read-only</span></td></tr>
+        <tr><td><b>P17</b> Audit Committee Pack</td><td>audit_committee_pack.py</td><td class="phase-cell" style="color:#3fb950">Reporting</td><td>SQLite reads/writes</td><td>audit_findings + mgmt_responses</td><td>Board PDF · ATR</td><td><span class="pill pill-orange">management_responses</span></td></tr>
+        <tr><td><b>P18</b> Payroll Audit</td><td>payroll_audit.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Rule-based + ML</td><td>Payroll roster (PA30)</td><td>Ghost employees · PF/ESI mismatch</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P19</b> Sales Revenue Auditor</td><td>sales_revenue_auditor.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Rule-based + clustering</td><td>Sales register + credit notes</td><td>Revenue issues · CN concentration</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P20</b> ITGC & SAP Access</td><td>itgc_sap_access_auditor.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Built-in SoD conflict matrix</td><td>SUIM user access dump</td><td>SoD breaches · SAP_ALL users</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P21</b> Contract Management</td><td>contract_management_auditor.py</td><td class="phase-cell" style="color:#58a6ff">Detection</td><td>Rule-based + fuzzy match</td><td>Contract master + receipts</td><td>Expired · LD non-recovery</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P22</b> Audit Workflow Engine</td><td>audit_workflow.py</td><td class="phase-cell" style="color:#f0883e">Governance</td><td>SQLite read/write</td><td>audit_findings + workflow_history</td><td>Status transitions · SLA</td><td><span class="pill pill-orange">workflow_history</span></td></tr>
+        <tr><td><b>P23</b> NLP Document Intelligence</td><td>nlp_document_intelligence.py</td><td class="phase-cell" style="color:#bc8cff">LLM/RAG</td><td>Gemini 1.5 Pro</td><td>PDF/DOCX/TXT documents</td><td>Structured finding table</td><td><span class="pill pill-red">audit_findings</span></td></tr>
+        <tr><td><b>P24</b> Multi-Company Dashboard</td><td>multi_company_dashboard.py</td><td class="phase-cell" style="color:#39d353">Dashboard</td><td>SQLite reads</td><td>audit_findings (company_code/plant)</td><td>Group charts · heat maps</td><td><span class="pill pill-green">Read-only</span></td></tr>
+        <tr><td><b>P25</b> Statistical Sampling</td><td>statistical_sampling.py</td><td class="phase-cell" style="color:#bc8cff">Analysis</td><td>MUS · Random · Cell · Stratified</td><td>Population CSV/Excel</td><td>Sample CSV for fieldwork</td><td><span class="pill pill-orange">sampling_runs</span></td></tr>
+        <tr><td><b>P26</b> Audit KPI Dashboard</td><td>audit_kpi_dashboard.py</td><td class="phase-cell" style="color:#39d353">Dashboard</td><td>SQLite reads</td><td>audit_findings + audit_kpi</td><td>KPI cards · trend charts</td><td><span class="pill pill-orange">audit_kpi</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ────────── TAB 7: DATABASE SCHEMA ────────── -->
+  <div class="section" id="tab-database">
+    <div class="section-header">
+      <h2>Database Schema</h2>
+      <p>All 5 SQLite tables in audit.db — the shared audit trail across all 26 modules</p>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Entity Relationship Diagram</h3>
+      <div class="mermaid">
+erDiagram
+    AUDIT_FINDINGS {
+        int id PK
+        string run_id
+        string company_code
+        string plant_code
+        string area
+        string checklist_ref
+        string finding
+        float amount_at_risk
+        string vendor_name
+        date finding_date
+        string period
+        string risk_band
+        string status
+        date sla_deadline
+        string assigned_to
+        datetime opened_at
+        datetime closed_at
+        int days_to_close
+    }
+    WORKFLOW_HISTORY {
+        int id PK
+        int finding_id FK
+        string old_status
+        string new_status
+        string changed_by
+        datetime changed_at
+        string comment
+    }
+    MANAGEMENT_RESPONSES {
+        int id PK
+        int finding_id FK
+        string response
+        string action_owner
+        date due_date
+        datetime updated_at
+    }
+    AUDIT_KPI {
+        int id PK
+        string metric_name
+        float metric_value
+        string period
+        datetime recorded_at
+    }
+    SAMPLING_RUNS {
+        int id PK
+        string run_name
+        int population_size
+        int sample_size
+        string method
+        float confidence_level
+        float materiality_threshold
+        datetime executed_at
+    }
+
+    AUDIT_FINDINGS ||--o{ WORKFLOW_HISTORY : "has history"
+    AUDIT_FINDINGS ||--o{ MANAGEMENT_RESPONSES : "has responses"
+      </div>
+    </div>
+
+    <div class="db-grid">
+      <div class="db-card">
+        <div class="db-card-head">audit_findings — Central Hub</div>
+        <div class="db-card-body">
+          <div class="field"><span class="field-key">id</span><span class="field-type">INTEGER PK</span></div>
+          <div class="field"><span class="field-key">run_id</span><span class="field-type">TEXT</span> — P1_20260427_1430</div>
+          <div class="field"><span class="field-key">company_code</span><span class="field-type">TEXT</span> — HQ / SUB1</div>
+          <div class="field"><span class="field-key">plant_code</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">area</span><span class="field-type">TEXT</span> — Vendor Payments</div>
+          <div class="field"><span class="field-key">finding</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">amount_at_risk</span><span class="field-type">REAL</span></div>
+          <div class="field"><span class="field-key">risk_band</span><span class="field-type">TEXT</span> — CRITICAL/HIGH…</div>
+          <div class="field"><span class="field-key">status</span><span class="field-type">TEXT</span> — Open→Closed</div>
+          <div class="field"><span class="field-key">sla_deadline</span><span class="field-type">DATE</span></div>
+          <div class="field"><span class="field-key">days_to_close</span><span class="field-type">INTEGER</span></div>
+        </div>
+      </div>
+      <div class="db-card">
+        <div class="db-card-head">workflow_history — Audit Trail</div>
+        <div class="db-card-body">
+          <div class="field"><span class="field-key">id</span><span class="field-type">INTEGER PK</span></div>
+          <div class="field"><span class="field-key">finding_id</span><span class="field-type">FK → audit_findings</span></div>
+          <div class="field"><span class="field-key">old_status</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">new_status</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">changed_by</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">changed_at</span><span class="field-type">DATETIME</span></div>
+          <div class="field"><span class="field-key">comment</span><span class="field-type">TEXT</span></div>
+        </div>
+      </div>
+      <div class="db-card">
+        <div class="db-card-head">management_responses — Board ATR</div>
+        <div class="db-card-body">
+          <div class="field"><span class="field-key">finding_id</span><span class="field-type">FK → audit_findings</span></div>
+          <div class="field"><span class="field-key">response</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">action_owner</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">due_date</span><span class="field-type">DATE</span></div>
+          <div class="field"><span class="field-key">updated_at</span><span class="field-type">DATETIME</span></div>
+        </div>
+      </div>
+      <div class="db-card">
+        <div class="db-card-head">audit_kpi — Performance Metrics</div>
+        <div class="db-card-body">
+          <div class="field"><span class="field-key">metric_name</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">metric_value</span><span class="field-type">REAL</span></div>
+          <div class="field"><span class="field-key">period</span><span class="field-type">TEXT</span> — 2026-04</div>
+          <div class="field"><span class="field-key">recorded_at</span><span class="field-type">DATETIME</span></div>
+        </div>
+      </div>
+      <div class="db-card">
+        <div class="db-card-head">sampling_runs — Fieldwork Log</div>
+        <div class="db-card-body">
+          <div class="field"><span class="field-key">run_name</span><span class="field-type">TEXT</span></div>
+          <div class="field"><span class="field-key">population_size</span><span class="field-type">INTEGER</span></div>
+          <div class="field"><span class="field-key">sample_size</span><span class="field-type">INTEGER</span></div>
+          <div class="field"><span class="field-key">method</span><span class="field-type">TEXT</span> — MUS/Random…</div>
+          <div class="field"><span class="field-key">confidence_level</span><span class="field-type">REAL</span></div>
+          <div class="field"><span class="field-key">materiality_threshold</span><span class="field-type">REAL</span></div>
+          <div class="field"><span class="field-key">executed_at</span><span class="field-type">DATETIME</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── TAB 8: TIMELINE ────────── -->
+  <div class="section" id="tab-timeline">
+    <div class="section-header">
+      <h2>Audit Cycle Timeline</h2>
+      <p>Typical 7-week audit cycle showing which modules are used in each phase</p>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Week-by-Week Audit Cycle</h3>
+      <div class="mermaid">
+gantt
+    title Typical 7-Week Internal Audit Cycle
+    dateFormat  YYYY-MM-DD
+    axisFormat  %b %d
+
+    section Setup & Config
+    Select Industry Profile          :done, s1, 2026-04-27, 2d
+    Configure YAML + Column Maps     :done, s2, 2026-04-29, 2d
+
+    section Detection Runs (Phase 1)
+    P1 Payment Anomaly               :active, d1, 2026-05-04, 3d
+    P5 BRS Reconciliation            :active, d2, 2026-05-04, 2d
+    P6 Receivables & Bad Debt        :active, d3, 2026-05-06, 2d
+    P8 GST/TDS Compliance            :d4, 2026-05-06, 2d
+    P9 Related Party Monitor         :d5, 2026-05-08, 2d
+    P10 Duplicate Invoice            :d6, 2026-05-08, 2d
+    P11 Inventory Anomaly            :d7, 2026-05-11, 2d
+    P12 Fixed Asset Auditor          :d8, 2026-05-11, 2d
+    P13 Expense Claims               :d9, 2026-05-13, 2d
+    P18 Payroll Audit                :d10, 2026-05-13, 2d
+    P19 Sales Revenue                :d11, 2026-05-15, 2d
+    P20 ITGC & SAP Access            :d12, 2026-05-15, 2d
+    P21 Contract Management          :d13, 2026-05-18, 2d
+
+    section Special Analysis
+    P4 Financial Statement Audit     :d14, 2026-05-06, 3d
+    P23 NLP Document Intelligence    :d15, 2026-05-11, 2d
+    P14 Audit Planning Engine        :d16, 2026-05-18, 1d
+
+    section Review & Triage
+    P22 Workflow Engine (Triage)     :w1, 2026-05-18, 5d
+    P17 Management Responses         :w2, 2026-05-20, 3d
+    P15 Risk Register Review         :w3, 2026-05-22, 2d
+
+    section Reporting
+    P7 Unified Dashboard             :r1, 2026-05-25, 2d
+    P16 Audit Report Center          :r2, 2026-05-25, 3d
+    P17 Audit Committee Pack         :r3, 2026-05-27, 2d
+    P26 KPI Dashboard Update         :r4, 2026-05-27, 1d
+
+    section Fieldwork
+    P25 Statistical Sampling         :f1, 2026-06-01, 2d
+    Manual Fieldwork                 :f2, 2026-06-03, 5d
+    P22 Workflow Close-out           :f3, 2026-06-08, 2d
+      </div>
+    </div>
+
+    <div class="diagram-card">
+      <h3>▶ Audit Flow Summary — Steps in Sequence</h3>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-blue"></div>
+          <div class="tl-title" style="color:#58a6ff">Step 0 — Setup & Configuration</div>
+          <div class="tl-desc">Select industry profile from 5 options. Configure compliance_calendar.yaml for GST/TDS rates. Set up column mapping profiles to handle SAP field naming variations.</div>
+          <div class="tl-modules"><span class="tl-mod">app.py</span><span class="tl-mod">industry_filter.py</span><span class="tl-mod">compliance_loader.py</span><span class="tl-mod">column_mapper.py</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-orange"></div>
+          <div class="tl-title" style="color:#f0883e">Step 1 — Data Ingestion</div>
+          <div class="tl-desc">Upload SAP export CSV/Excel (FBL1N, MB52, PA30, SUIM, etc.) to the relevant detection module. Column mapper auto-suggests field mapping using synonym dictionary.</div>
+          <div class="tl-modules"><span class="tl-mod">column_mapper.py</span><span class="tl-mod">base_audit_check.py</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-purple"></div>
+          <div class="tl-title" style="color:#bc8cff">Step 2 — AI Detection (13 Modules Run)</div>
+          <div class="tl-desc">IsolationForest detects unsupervised anomalies → XGBoost refines probabilities → SHAP explains each flag. Rule-based layer applies Benford's Law, policy thresholds, and YAML-driven compliance checks.</div>
+          <div class="tl-modules"><span class="tl-mod">P1</span><span class="tl-mod">P5</span><span class="tl-mod">P6</span><span class="tl-mod">P8</span><span class="tl-mod">P9</span><span class="tl-mod">P10</span><span class="tl-mod">P11</span><span class="tl-mod">P12</span><span class="tl-mod">P13</span><span class="tl-mod">P18</span><span class="tl-mod">P19</span><span class="tl-mod">P20</span><span class="tl-mod">P21</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-red"></div>
+          <div class="tl-title" style="color:#f85149">Step 3 — Auto-Log to Audit Trail</div>
+          <div class="tl-desc">All flagged findings auto-inserted into audit_findings table via base_audit_check.log_to_db(). Risk bands assigned: CRITICAL / HIGH / MEDIUM / LOW based on amount thresholds and recurrence count.</div>
+          <div class="tl-modules"><span class="tl-mod">base_audit_check.py</span><span class="tl-mod">audit.db → audit_findings</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-blue"></div>
+          <div class="tl-title" style="color:#58a6ff">Step 4 — Policy Lookup (RAG)</div>
+          <div class="tl-desc">Findings passed to RAG engine — pgvector searches 17 pre-indexed audit policy documents. Gemini 1.5 Pro synthesizes audit observation: root cause + compliance gap + recommended audit steps.</div>
+          <div class="tl-modules"><span class="tl-mod">P2 Policy RAG Bot</span><span class="tl-mod">rag_engine.py</span><span class="tl-mod">pgvector (Neon PostgreSQL)</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-purple"></div>
+          <div class="tl-title" style="color:#bc8cff">Step 5 — Special Analysis</div>
+          <div class="tl-desc">P4 drafts all 5 financial statements from Trial Balance using Gemini. P14 generates risk-based annual audit plan. P23 mines unstructured documents (emails, board papers) for audit concerns. P25 draws statistical samples for fieldwork.</div>
+          <div class="tl-modules"><span class="tl-mod">P4 Financial Statements</span><span class="tl-mod">P14 Audit Planning</span><span class="tl-mod">P23 NLP Intelligence</span><span class="tl-mod">P25 Statistical Sampling</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-yellow"></div>
+          <div class="tl-title" style="color:#e3b341">Step 6 — Workflow & Triage</div>
+          <div class="tl-desc">Auditor reviews all findings in P22, transitions status (Open → In Progress → Management Response → Verified → Closed), sets SLA deadlines (default 15 days), assigns owners, and tracks breaches. Full audit trail in workflow_history.</div>
+          <div class="tl-modules"><span class="tl-mod">P22 Workflow Engine</span><span class="tl-mod">workflow_history table</span><span class="tl-mod">management_responses table</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-green"></div>
+          <div class="tl-title" style="color:#3fb950">Step 7 — Risk & Dashboard Review</div>
+          <div class="tl-desc">P7 shows overall risk gauge and compliance calendar. P15 builds 5×5 heat map (Area × Risk Band) and quarterly priority plan. P24 provides group-level view with company/plant filters. P26 shows KPI metrics and closure rates.</div>
+          <div class="tl-modules"><span class="tl-mod">P7 Unified Dashboard</span><span class="tl-mod">P15 Risk Register</span><span class="tl-mod">P24 Multi-Company</span><span class="tl-mod">P26 KPI Dashboard</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-teal"></div>
+          <div class="tl-title" style="color:#39d353">Step 8 — Executive Reporting</div>
+          <div class="tl-desc">P16 generates CFO-ready 6-section MIS PDF + Excel workbook (one sheet per audit area) with LLM-synthesized executive summary. P17 creates board-compliant Audit Committee Pack with ATR, new observations, management responses, and escalation items.</div>
+          <div class="tl-modules"><span class="tl-mod">P16 Audit Report Center</span><span class="tl-mod">P17 Committee Pack (§177 / LODR §18)</span></div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot tl-dot-orange"></div>
+          <div class="tl-title" style="color:#f0883e">Step 9 — Fieldwork Loop</div>
+          <div class="tl-desc">P25 statistical samples are used for manual audit procedures. Findings from fieldwork are added back to workflow via P22. Cycle repeats each period (monthly/quarterly) with new SAP data uploads.</div>
+          <div class="tl-modules"><span class="tl-mod">P25 Statistical Sampling</span><span class="tl-mod">P22 Workflow (close-out)</span><span class="tl-mod">→ Next Period</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+  // Tab switching
+  function showTab(name) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  // Mermaid init
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#161b22',
+      primaryColor: '#1c2a3a',
+      primaryTextColor: '#e6edf3',
+      primaryBorderColor: '#58a6ff',
+      lineColor: '#58a6ff',
+      secondaryColor: '#1a2a1a',
+      tertiaryColor: '#2a1a2a',
+      edgeLabelBackground: '#161b22',
+      clusterBkg: '#0d1117',
+      clusterBorder: '#30363d',
+      nodeBorder: '#30363d',
+      mainBkg: '#161b22',
+      nodeTextColor: '#e6edf3',
+      fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+      fontSize: '13px',
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 20,
+      nodeSpacing: 40,
+      rankSpacing: 60,
+    },
+    er: {
+      diagramPadding: 20,
+      entityPadding: 15,
+    },
+    gantt: {
+      fontSize: 12,
+      gridLineStartPadding: 35,
+      sectionFontSize: 13,
+    },
+    stateDiagram: {
+      dividerMargin: 10,
+    }
+  });
+</script>
+</body>
+</html>

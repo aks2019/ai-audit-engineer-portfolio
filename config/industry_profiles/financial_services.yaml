@@ -1,0 +1,7 @@
+industry: "Financial Services"
+modules_disabled: ["inventory_anomaly", "contract_management", "sales_revenue_auditor"]
+thresholds:
+  days_overdue_critical: 30
+  npa_provisioning_days: 90
+compliance_focus: [gst_full, tds_all_sections, rbi_limits]
+tds_high_risk: ["194A", "195", "194C"]
