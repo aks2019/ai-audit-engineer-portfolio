@@ -86,4 +86,4 @@ if uploaded:
         log_df["flag_reason"] = log_df["desc"]
         log_df["risk_band"] = log_df["risk"]
         checker.log_to_db(log_df, area="ITGC", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
-        st.caption(f"📝 {len(log_df)} SoD findings logged")
+        st.caption(f"📝 {len(log_df)} SoD draft findings staged for auditor confirmation")

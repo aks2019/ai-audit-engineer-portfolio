@@ -83,7 +83,7 @@ if uploaded:
     log_df["risk_band"] = "HIGH"
     if not log_df.empty:
         checker.log_to_db(log_df, area="Duplicate Invoices", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
-        st.caption(f"📝 {len(log_df)} findings logged")
+        st.caption(f"📝 {len(log_df)} draft findings staged for auditor confirmation")
 
     # Fraud score & block recommendation
     if not df.empty:

@@ -250,7 +250,7 @@ if uploaded_file:
         log_df["risk_band"] = log_df["xgb_risk_score"].apply(lambda s: "CRITICAL" if s > 0.9 else "HIGH" if s > 0.7 else "MEDIUM")
         if not log_df.empty:
             checker.log_to_db(log_df, area="Vendor Payments", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
-            st.caption(f"📝 {len(log_df)} findings logged to audit.db (run_id: {run_id})")
+            st.caption(f"📝 {len(log_df)} draft findings staged for auditor confirmation (run_id: {run_id})")
 
         # ── SHAP Risk Driver Analysis ─────────────────────────────────────
         with st.expander("🔍 SHAP Risk Driver Analysis", expanded=False):

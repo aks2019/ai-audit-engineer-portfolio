@@ -1,10 +1,10 @@
-"""Base Audit Check — Abstract base class for all 21 detection modules.
+﻿"""Base Audit Check - Abstract base class for audit detection modules.
 
-Principle 4: Plugin Architecture. Adding a new audit check means writing one new
-class — zero changes to any existing page or engine. The check registers itself;
-pages enumerate available checks dynamically.
+Detection modules should stage proposed findings first. Formal reporting reads only
+confirmed rows from audit_findings after auditor review/confirmation.
 """
 from abc import ABC, abstractmethod
+
 import pandas as pd
 
 
@@ -37,32 +37,34 @@ class BaseAuditCheck(ABC):
 
     def log_to_db(self, flagged_df: pd.DataFrame, area: str, period: str, run_id: str,
                   company_code: str = "HQ", plant_code: str = ""):
-        """Write findings to shared SQLite audit trail."""
-        import sqlite3
-        from pathlib import Path
-        Path("data").mkdir(exist_ok=True)
-        conn = sqlite3.connect("data/audit.db")
-        for _, row in flagged_df.head(100).iterrows():
-            conn.execute(
-                """INSERT INTO audit_findings
-                (run_id, company_code, plant_code, area, checklist_ref, finding, amount_at_risk, vendor_name,
-                 finding_date, period, risk_band, status)
-                VALUES (?,?,?,?,?,?,?,?,date('now'),?,?,'Open')""",
-                (
-                    run_id,
-                    company_code,
-                    plant_code,
-                    area,
-                    self.checklist_ref,
-                    row.get("flag_reason", "Anomaly detected"),
-                    float(row.get("amount", 0)),
-                    str(row.get("vendor_name", "")),
-                    period,
-                    row.get("risk_band", "HIGH"),
-                ),
-            )
-        conn.commit()
-        conn.close()
+        """Stage proposed findings for auditor confirmation.
+
+        Kept as log_to_db for backward compatibility with existing pages, but it
+        no longer inserts directly into audit_findings. Official findings are
+        created only by confirm_draft_findings().
+        """
+        from utils.audit_db import stage_findings
+
+        draft_df = flagged_df.head(100).copy()
+        if "checklist_ref" not in draft_df.columns:
+            draft_df["checklist_ref"] = self.checklist_ref
+        if "proposed_finding" not in draft_df.columns:
+            draft_df["proposed_finding"] = draft_df.get("flag_reason", "Anomaly detected")
+        if "amount_at_risk" not in draft_df.columns and "amount" in draft_df.columns:
+            draft_df["amount_at_risk"] = draft_df["amount"]
+        return stage_findings(
+            draft_df,
+            module=area,
+            run_id=run_id,
+            period=period,
+            metadata={
+                "area": area,
+                "company_code": company_code,
+                "plant_code": plant_code,
+                "checklist_ref": self.checklist_ref,
+                "generated_by": "system_detection",
+            },
+        )
 
     def compute_risk_band(self, amount: float, recurrence: int = 1) -> str:
         """Compute risk band from amount and recurrence count."""

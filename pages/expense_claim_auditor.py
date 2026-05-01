@@ -80,4 +80,4 @@ if uploaded:
     log_df["risk_band"] = "MEDIUM"
     if not log_df.empty:
         checker.log_to_db(log_df, area="Expense Claims", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
-        st.caption(f"📝 Findings logged")
+        st.caption(f"📝 Draft findings staged for auditor confirmation")
