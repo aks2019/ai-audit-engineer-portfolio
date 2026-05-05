@@ -38,6 +38,8 @@ if "report_citations_count" not in st.session_state:
     st.session_state.report_citations_count = 0
 if "report_generated_at" not in st.session_state:
     st.session_state.report_generated_at = ""
+if "draft_run_id" not in st.session_state:
+    st.session_state.draft_run_id = None
 
 
 def _generate_report_pdf(report_text: str) -> BytesIO:
@@ -232,25 +234,45 @@ if uploaded_file:
             if benford["flag"].any():
                 st.warning(f"Benford deviation >5% on digits: {list(benford[benford['flag']]['digit'])}")
 
-        # ── SQLite Audit Trail Logging ──────────────────────────────────
-        from utils.audit_db import init_audit_db
-        from utils.base_audit_check import BaseAuditCheck
-        init_audit_db()
-        run_id = hashlib.sha256(str(datetime.utcnow()).encode()).hexdigest()[:12]
-        class _PaymentAnomalyCheck(BaseAuditCheck):
-            name = "Payment Anomaly"
-            checklist_ref = "SAP Unit 1.18 / Vendor Mgmt E.1–E.4"
-            sap_tcode_primary = "ZVOTAGE"
-            def detect(self, df: pd.DataFrame) -> pd.DataFrame:
-                return df
-            sap_tcode_standard_alt = "FBL1N / S_ALR_87012085"
-        checker = _PaymentAnomalyCheck()
-        log_df = filtered.copy()
-        log_df["flag_reason"] = "High-risk payment anomaly (IsolationForest + XGBoost ensemble)"
-        log_df["risk_band"] = log_df["xgb_risk_score"].apply(lambda s: "CRITICAL" if s > 0.9 else "HIGH" if s > 0.7 else "MEDIUM")
-        if not log_df.empty:
-            checker.log_to_db(log_df, area="Vendor Payments", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
-            st.caption(f"📝 {len(log_df)} findings logged to audit.db (run_id: {run_id})")
+        # ── Stage Findings for Draft Review (replaces auto-log) ─────────
+        from utils.audit_db import stage_findings as _stage_findings
+
+        # Stable run_id per uploaded file — same file always maps to same run
+        file_run_id = hashlib.sha256(uploaded_file.getvalue()).hexdigest()[:12]
+
+        if st.session_state.draft_run_id != file_run_id:
+            # Stage ALL model-detected anomalies (not just sidebar-filtered subset)
+            all_flagged = df[df["anomaly_score"] == 1].copy()
+            all_flagged["area"]          = "Vendor Payments"
+            all_flagged["checklist_ref"] = "CARO Clause 12 / SAP Vendor Mgmt E.1–E.4"
+            all_flagged["finding"]       = all_flagged.apply(
+                lambda r: (
+                    f"High-risk payment to {r['vendor_name']} — "
+                    f"₹{r['amount']:,.0f} detected by IsolationForest+XGBoost "
+                    f"(anomaly probability: {r['anomaly_probability']:.0%})"
+                ), axis=1
+            )
+            all_flagged["amount_at_risk"] = all_flagged["amount"]
+            all_flagged["risk_band"]      = all_flagged["xgb_risk_score"].apply(
+                lambda s: "CRITICAL" if s > 0.9 else "HIGH" if s > 0.7 else "MEDIUM"
+            )
+            all_flagged["finding_date"]   = datetime.utcnow().strftime("%Y-%m-%d")
+
+            staged = _stage_findings(
+                all_flagged,
+                module_name="Payment Anomaly Detector",
+                run_id=file_run_id,
+                period=datetime.utcnow().strftime("%Y-%m"),
+                source_file_name=uploaded_file.name,
+            )
+            st.session_state.draft_run_id = file_run_id
+            st.info(
+                f"📋 **{staged} exception(s) staged for your review.** "
+                "Nothing has been added to the official audit trail yet. "
+                "Scroll down to **Review & Confirm Findings** to approve or discard."
+            )
+        else:
+            st.caption(f"📋 Exceptions already staged (run: `{file_run_id}`). Review below.")
 
         # ── SHAP Risk Driver Analysis ─────────────────────────────────────
         with st.expander("🔍 SHAP Risk Driver Analysis", expanded=False):
@@ -299,6 +321,141 @@ if uploaded_file:
             except Exception as shap_err:
                 st.warning(f"SHAP explanation unavailable: {shap_err}")
 
+        # ── Review & Confirm Findings ─────────────────────────────────
+        st.divider()
+        st.subheader("✅ Review & Confirm Findings")
+        st.caption(
+            "Exceptions are **staged as drafts** — nothing enters the official audit trail "
+            "until you confirm here. Edit finding text or risk band before confirming. "
+            "Discard false positives without them appearing in any report."
+        )
+
+        from utils.audit_db import (
+            load_draft_findings, confirm_draft_findings, discard_draft_findings
+        )
+
+        current_run_id = st.session_state.get("draft_run_id")
+        drafts = load_draft_findings(
+            run_id=current_run_id,
+            module_name="Payment Anomaly Detector",
+            status="Draft"
+        )
+
+        if drafts.empty:
+            already_confirmed = load_draft_findings(
+                run_id=current_run_id,
+                module_name="Payment Anomaly Detector",
+                status="Confirmed"
+            )
+            if not already_confirmed.empty:
+                st.success(
+                    f"All {len(already_confirmed)} exception(s) for this run have already "
+                    "been confirmed and added to the audit trail."
+                )
+            else:
+                st.info("No staged exceptions found. Upload a file and run detection first.")
+        else:
+            st.caption(
+                f"**{len(drafts)} draft exception(s)** pending review  |  "
+                f"run `{current_run_id}`"
+            )
+
+            # Editable table — auditor can refine finding text and risk band
+            review_df = drafts[["id", "vendor_name", "finding", "amount_at_risk", "risk_band"]].copy()
+            edited = st.data_editor(
+                review_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "id":            st.column_config.NumberColumn("ID", disabled=True, width="small"),
+                    "vendor_name":   st.column_config.TextColumn("Vendor", disabled=True),
+                    "finding":       st.column_config.TextColumn("Finding (editable)", width="large"),
+                    "amount_at_risk":st.column_config.NumberColumn("Amount at Risk ₹", format="%.0f"),
+                    "risk_band":     st.column_config.SelectboxColumn(
+                                         "Risk Band",
+                                         options=["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+                                     ),
+                },
+                key="draft_editor_p1"
+            )
+
+            # Row selection via multiselect
+            all_ids = drafts["id"].tolist()
+            id_labels = {
+                row["id"]: f"ID {row['id']} — {row['vendor_name']} (₹{row['amount_at_risk']:,.0f}, {row['risk_band']})"
+                for _, row in drafts.iterrows()
+            }
+            selected_ids = st.multiselect(
+                "Select exceptions to act on",
+                options=all_ids,
+                default=all_ids,
+                format_func=lambda i: id_labels.get(i, str(i))
+            )
+
+            confirmed_by = st.text_input(
+                "Confirmed / Reviewed by (auditor name)",
+                value="Auditor",
+                key="confirmed_by_p1"
+            )
+
+            c_confirm, c_discard = st.columns(2)
+
+            with c_confirm:
+                if st.button(
+                    "✅ Confirm Selected → Official Audit Trail",
+                    type="primary", use_container_width=True, key="confirm_p1"
+                ):
+                    if not selected_ids:
+                        st.warning("Select at least one exception to confirm.")
+                    else:
+                        # Pass any edits the auditor made in the data_editor
+                        edited_vals = {
+                            int(row["id"]): {
+                                "finding":       row.get("finding", ""),
+                                "amount_at_risk":row.get("amount_at_risk", 0),
+                                "risk_band":     row.get("risk_band", "MEDIUM"),
+                            }
+                            for _, row in edited.iterrows()
+                        }
+                        n = confirm_draft_findings(
+                            selected_ids,
+                            confirmed_by=confirmed_by.strip() or "Auditor",
+                            edited_values=edited_vals
+                        )
+                        st.success(
+                            f"✅ **{n} finding(s) confirmed** and added to the official "
+                            "audit trail. They will now appear in P16, P17, and all reports."
+                        )
+                        st.rerun()
+
+            with c_discard:
+                discard_reason = st.text_input(
+                    "Discard reason (optional)", key="discard_reason_p1"
+                )
+                if st.button(
+                    "🗑️ Discard Selected (False Positives)",
+                    use_container_width=True, key="discard_p1"
+                ):
+                    if not selected_ids:
+                        st.warning("Select at least one exception to discard.")
+                    else:
+                        n = discard_draft_findings(
+                            selected_ids,
+                            discarded_by=confirmed_by.strip() or "Auditor",
+                            reason=discard_reason or "False positive — auditor review"
+                        )
+                        st.info(f"🗑️ **{n} exception(s) discarded.** They will not appear in reports.")
+                        st.rerun()
+
+            # Export draft exceptions before deciding
+            csv_draft = drafts.to_csv(index=False).encode()
+            st.download_button(
+                "📥 Export Draft Exceptions as CSV",
+                csv_draft, "draft_exceptions_p1.csv", "text/csv",
+                key="export_drafts_p1"
+            )
+
+        st.divider()
         st.subheader("📄 Optional: Attach One-Off Vendor Contract")
         st.caption("Main reference = full pgvector repository")
         uploaded_contract = st.file_uploader(

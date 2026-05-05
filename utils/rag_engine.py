@@ -37,12 +37,14 @@ def _get_vectorstore_safe():
         return None, str(e)
 
 def _get_llm():
-    if os.getenv("USE_LOCAL_LLM", "true").lower() == "false":
+    # If USE_LOCAL_LLM is explicitly set to "true", use local llama.cpp; otherwise use Gemini cloud
+    if os.getenv("USE_LOCAL_LLM", "true").lower() == "true":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(base_url="http://127.0.0.1:8080/v1", api_key="llama.cpp",
-                          model="gemma-4-E2B-it-Q4_K_M.gguf", temperature=1.0)
+                          model="gemma-4-E2B-it-Q4_K_M.gguf", temperature=0.7)
+    # Otherwise, use Gemini (Cloud LLM)
     from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3,
+    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7,
                                   google_api_key=os.getenv("GOOGLE_API_KEY"))
 
 @cache_rag_result(ttl_seconds=1800)

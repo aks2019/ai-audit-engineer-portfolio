@@ -7,7 +7,8 @@ from utils.industry_filter import (
     get_current_profile_name, set_current_profile_name,
     is_page_enabled
 )
-from utils.audit_db import init_audit_db, load_findings, get_kpis
+from utils.audit_db import load_findings, get_kpis
+from core.init_audit_system import initialize_audit_system
 
 st.set_page_config(page_title="AI Audit Engineer", page_icon="🚨", layout="wide")
 
@@ -89,8 +90,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Initialize all core tables (idempotent — safe on every startup)
+if "audit_system_initialized" not in st.session_state:
+    initialize_audit_system()
+    st.session_state["audit_system_initialized"] = True
+
 # Live metrics from SQLite
-init_audit_db()
 findings = load_findings()
 total_findings = len(findings)
 open_findings = len(findings[findings["status"] == "Open"]) if not findings.empty else 0
