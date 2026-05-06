@@ -149,6 +149,10 @@ def analyze_vendor_aging(vendor_df: pd.DataFrame, reference_date: str = None) ->
     except:
         ref_date = datetime.now()
 
+    # Strip column names to remove any extra whitespace
+    vendor_df = vendor_df.copy()
+    vendor_df.columns = [c.strip() for c in vendor_df.columns]
+
     issues = []
 
     # Calculate aging
@@ -212,6 +216,10 @@ def analyze_customer_aging(customer_df: pd.DataFrame, reference_date: str = None
     except:
         ref_date = datetime.now()
 
+    # Strip column names to remove any extra whitespace
+    customer_df = customer_df.copy()
+    customer_df.columns = [c.strip() for c in customer_df.columns]
+
     issues = []
 
     for _, row in customer_df.iterrows():
@@ -241,7 +249,7 @@ def analyze_customer_aging(customer_df: pd.DataFrame, reference_date: str = None
         "total_customers": customer_df['Customer'].nunique(),
         "total_receivables": total_receivables,
         "issues": issues,
-        "overdue_90_count": len([i for i in issues if i['type'] == 'OVERDUE_90"])
+        "overdue_90_count": len([i for i in issues if i['type'] == 'OVERDUE_90'])
     }
 
 

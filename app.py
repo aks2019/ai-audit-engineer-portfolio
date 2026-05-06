@@ -24,7 +24,6 @@ if selected != current:
     st.rerun()
 
 st.sidebar.divider()
-st.sidebar.page_link("app.py", label="🏠 Home")
 st.sidebar.page_link("pages/anomaly_detector.py", label="🚨 P1: Anomaly Detector")
 st.sidebar.page_link("pages/policy_rag_bot.py", label="📋 P2: Policy RAG Bot")
 st.sidebar.page_link("pages/dynamic_audit_builder.py", label="🛠️ P3: Dynamic Audit Builder")
@@ -47,17 +46,18 @@ st.sidebar.page_link("pages/payroll_audit.py", label="👥 P18: Payroll Audit")
 if is_page_enabled("sales_revenue_auditor"):
     st.sidebar.page_link("pages/sales_revenue_auditor.py", label="📈 P19: Sales Revenue Auditor")
 st.sidebar.page_link("pages/itgc_sap_access_auditor.py", label="🔐 P20: ITGC & SAP Access")
+st.sidebar.page_link("pages/sap_data_pack_auditor.py", label="📦 P21: SAP Data Pack Auditor")
 if is_page_enabled("contract_management"):
-    st.sidebar.page_link("pages/contract_management_auditor.py", label="📜 P21: Contract Management")
+    st.sidebar.page_link("pages/contract_management_auditor.py", label="📜 P22: Contract Management")
 st.sidebar.divider()
 st.sidebar.markdown("**🔧 Phase 2 Tools**")
-st.sidebar.page_link("pages/audit_workflow.py", label="🔄 P22: Audit Workflow Engine")
-st.sidebar.page_link("pages/nlp_document_intelligence.py", label="🧠 P23: NLP Doc Intelligence")
-st.sidebar.page_link("pages/multi_company_dashboard.py", label="🏢 P24: Multi-Company View")
-st.sidebar.page_link("pages/statistical_sampling.py", label="📐 P25: Statistical Sampling")
-st.sidebar.page_link("pages/audit_kpi_dashboard.py", label="📊 P26: Audit KPI Dashboard")
-st.sidebar.page_link("pages/audit_session_manager.py", label="📅 P27: Audit Session Manager")
-st.sidebar.page_link("pages/policy_management.py", label="🗄️ P28: Policy Management")
+st.sidebar.page_link("pages/audit_workflow.py", label="🔄 P23: Audit Workflow Engine")
+st.sidebar.page_link("pages/nlp_document_intelligence.py", label="🧠 P24: NLP Doc Intelligence")
+st.sidebar.page_link("pages/multi_company_dashboard.py", label="🏢 P25: Multi-Company View")
+st.sidebar.page_link("pages/statistical_sampling.py", label="📐 P26: Statistical Sampling")
+st.sidebar.page_link("pages/audit_kpi_dashboard.py", label="📊 P27: Audit KPI Dashboard")
+st.sidebar.page_link("pages/audit_session_manager.py", label="📅 P28: Audit Session Manager")
+st.sidebar.page_link("pages/policy_management.py", label="🗄️ P29: Policy Management")
 
 with st.sidebar.expander("📚 SAP T-Code Reference"):
     st.markdown("""
@@ -107,7 +107,7 @@ m1.metric("📁 Total Findings", total_findings)
 m2.metric("🔴 Open", open_findings)
 m3.metric("💣 Critical", critical_findings)
 m4.metric("🔶 High", high_findings)
-m5.metric("🎯 Modules", 26)
+m5.metric("🎯 Modules", 27)
 
 st.divider()
 
@@ -189,8 +189,10 @@ st.subheader("📋 Module Quick Reference")
 mc1, mc2, mc3 = st.columns(3)
 with mc1:
     st.markdown("""
-    **Detection (P1, P5–P14, P18–P21)**
+    **Detection (P1, P3–P6, P8–P14, P18–P22, P25)**
     - P1: Payment Anomaly Detector
+    - P3: Dynamic Audit Builder
+    - P4: Financial Statement Auditor
     - P5: BRS Reconciliation
     - P6: Receivables & Bad Debt
     - P8: GST/TDS Compliance
@@ -202,26 +204,24 @@ with mc1:
     - P18: Payroll Audit
     - P19: Sales Revenue Auditor
     - P20: ITGC & SAP Access
-    - P21: Contract Management
+    - P21: SAP Data Pack Auditor
+    - P22: Contract Management
+    - P25: Statistical Sampling
     """)
 with mc2:
     st.markdown("""
-    **Analysis & RAG (P2–P4, P14, P23, P25)**
+    **Analysis & RAG (P2, P14, P23)**
     - P2: Policy RAG Bot
-    - P3: Dynamic Audit Builder
-    - P4: Financial Statement Auditor
     - P14: Audit Planning Engine
     - P23: NLP Document Intelligence
-    - P25: Statistical Sampling
     """)
 with mc3:
     st.markdown("""
-    **Reporting & Governance (P7, P15–P17, P22, P24, P26)**
+    **Reporting & Governance (P7, P15–P17, P24, P26)**
     - P7: Unified Dashboard
     - P15: Risk Register
     - P16: Audit Report Center
     - P17: Audit Committee Pack
-    - P22: Audit Workflow Engine
     - P24: Multi-Company View
     - P26: Audit KPI Dashboard
     """)
