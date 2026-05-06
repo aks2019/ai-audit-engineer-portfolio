@@ -14,7 +14,7 @@ from utils.redis_cache import save_session_to_redis, load_session_from_redis
 
 # === FIX IMPORT PATH FOR UTILS FOLDER ===
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from utils.rag_engine import generate_rag_audit_report, get_free_form_chain
+from utils.rag_engine import generate_rag_audit_report, get_free_form_chain, build_combined_context
 from utils.redis_cache import save_session_to_redis, load_session_from_redis
 
 # === SESSION STATE (all previous + persistent report) ===
@@ -521,9 +521,18 @@ if uploaded_file:
 
                     with st.chat_message("assistant"):
                         with st.spinner("Querying Policy RAG Bot (free-form)..."):
-                            # Build rich context from flagged_df + initial report
+                            # Build rich context from flagged_df + initial report + Standards Registry
                             flagged_summary = st.session_state.flagged_df.nlargest(10, "amount")[["vendor_name", "amount", "anomaly_probability", "days_overdue"]].to_string()
-                            rich_context = f"""
+                            
+                            # ── Inject Standards Registry into follow-up context ──
+                            flagged_list = st.session_state.flagged_df.to_dict(orient="records")
+                            standards_context, _ = build_combined_context(
+                                prompt, pgvector_top_k=0, standards_top_k=10,
+                                flagged_data=flagged_list
+                            )
+                            
+                            rich_context = f"""{standards_context}
+
 Flagged Transactions Summary:
 {flagged_summary}
 

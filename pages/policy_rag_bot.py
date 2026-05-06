@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path   # ← ADD THIS LINE
-from utils.rag_engine import get_vectorstore, get_free_form_chain, get_rag_chain, add_documents_from_upload, add_documents_from_csv_or_excel_or_office, _get_vectorstore_safe
+from utils.rag_engine import get_vectorstore, get_free_form_chain, get_rag_chain, add_documents_from_upload, add_documents_from_csv_or_excel_or_office, _get_vectorstore_safe, build_combined_context, search_standards_from_sqlite, format_standards_for_context
 from db_utils import log_rag_query
 from utils.redis_cache import save_session_to_redis, load_session_from_redis
 from reportlab.lib.pagesizes import letter
@@ -151,8 +151,15 @@ def _extract_chat_attachment_text(uploaded_files):
             elif suffix == ".xlsx":
                 import pandas as pd
 
-                df = pd.read_excel(io_module.BytesIO(f.getvalue()))
-                text = df.to_string()
+                # Multi-sheet Excel support: read ALL sheets
+                xl = pd.ExcelFile(io_module.BytesIO(f.getvalue()))
+                sheet_texts = []
+                for sheet_name in xl.sheet_names:
+                    df_sheet = pd.read_excel(io_module.BytesIO(f.getvalue()), sheet_name=sheet_name)
+                    if df_sheet.empty:
+                        continue
+                    sheet_texts.append(f"[Sheet: {sheet_name}]\n{df_sheet.to_string()}")
+                text = "\n\n".join(sheet_texts) if sheet_texts else "(Empty Excel file)"
             elif suffix == ".docx":
                 import docx2txt
 
@@ -248,16 +255,14 @@ if prompt:
         st.markdown(user_content)
 
     with st.chat_message("assistant"):
-        with st.spinner("Searching..."):
+        with st.spinner("Searching Standards Registry + Policy Documents..."):
             # === FIXED: Inject full conversation history ===
             history = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in st.session_state.messages[:-1]])
             
-            vectorstore, db_error = _get_vectorstore_safe()
-            if vectorstore is None:
-                st.error(f"⚠️ Policy database unavailable: {db_error}")
-                st.stop()
-            docs = vectorstore.similarity_search(prompt, k=5)
-            context = "\n\n---\n\n".join(f"Document: {d.metadata.get('source', 'Policy')}\n{d.page_content}" for d in docs)
+            # ── Combined search: SQLite Standards + PGVector Policies ──
+            combined_context, combined_citations = build_combined_context(
+                prompt, pgvector_top_k=5, standards_top_k=8
+            )
             
             attachment_block = ""
             if attachment_text:
@@ -265,20 +270,26 @@ if prompt:
 {attachment_text}
 
 """
-
+            
+            # If PGVector is down, we still have Standards Registry from SQLite
+            vectorstore_ok = combined_context and "PGVector connection error" not in combined_context
+            
             full_context = f"""{attachment_block}Previous conversation history:
 {history}
 
-Retrieved policy/contract documents:
-{context}"""
+{combined_context}"""
             
             chain = get_rag_chain() if mode == "Structured Audit Report" else get_free_form_chain()
             response = chain.invoke({"context": full_context, "question": prompt})
             
             st.markdown(response.content)
             with st.expander("📚 Sources & References"):
-                for i, doc in enumerate(docs, 1):
-                    st.markdown(f"**{i}.** {doc.metadata.get('source', 'Policy doc')}")
+                if combined_citations:
+                    st.markdown("**Cited Sources:**")
+                    for i, cite in enumerate(set(combined_citations), 1):  # deduplicate
+                        st.markdown(f"{i}. {cite}")
+                else:
+                    st.info("No specific sources referenced from the context.")
             log_rag_query(prompt, response.content)
 
     st.session_state.messages.append({"role": "assistant", "content": response.content})
