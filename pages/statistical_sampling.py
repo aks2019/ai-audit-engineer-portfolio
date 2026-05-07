@@ -68,3 +68,28 @@ if uploaded:
             materiality_threshold=materiality
         )
         st.caption("📝 Sampling run saved to audit.db")
+
+
+# --- AI Audit Report (RAG) ---
+try:
+    from utils.audit_page_helpers import render_rag_report_section
+    flagged_rag_df = flagged if 'flagged' in locals() and flagged is not None and not flagged.empty else None
+    if flagged_rag_df is not None:
+        render_rag_report_section(
+            "sample",
+            flagged_df=flagged_rag_df,
+            module_name="Statistical Sampling"
+        )
+    else:
+        st.caption("ℹ️ No flagged data for RAG report.")
+except Exception as _e:
+    st.caption(f"RAG report unavailable: {_e}")
+
+
+
+# --- Draft Review ---
+try:
+    from utils.audit_page_helpers import render_draft_review_section
+    render_draft_review_section("sample", "Statistical Sampling")
+except Exception as _e:
+    st.caption(f"Draft review unavailable: {_e}")

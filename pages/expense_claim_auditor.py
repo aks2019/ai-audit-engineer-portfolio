@@ -80,4 +80,40 @@ if uploaded:
     log_df["risk_band"] = "MEDIUM"
     if not log_df.empty:
         checker.log_to_db(log_df, area="Expense Claims", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
+        # ── Stage Findings for Draft Review ──
+        from utils.audit_db import stage_findings as _stage_findings
+        _staged = _stage_findings(
+            log_df,
+            module_name="Expense Claim Auditor",
+            run_id=run_id,
+            period=datetime.utcnow().strftime("%Y-%m"),
+            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+        )
+        st.info(f"📋 {_staged} exception(s) staged for your review.")
+        st.session_state.draft_run_id = run_id
         st.caption(f"📝 Findings logged")
+
+
+# --- AI Audit Report (RAG) ---
+try:
+    from utils.audit_page_helpers import render_rag_report_section
+    flagged_rag_df = flagged if 'flagged' in locals() and flagged is not None and not flagged.empty else None
+    if flagged_rag_df is not None:
+        render_rag_report_section(
+            "exp",
+            flagged_df=flagged_rag_df,
+            module_name="Expense Claim Auditor"
+        )
+    else:
+        st.caption("ℹ️ No flagged data for RAG report.")
+except Exception as _e:
+    st.caption(f"RAG report unavailable: {_e}")
+
+
+
+# --- Draft Review ---
+try:
+    from utils.audit_page_helpers import render_draft_review_section
+    render_draft_review_section("exp", "Expense Claim Auditor")
+except Exception as _e:
+    st.caption(f"Draft review unavailable: {_e}")

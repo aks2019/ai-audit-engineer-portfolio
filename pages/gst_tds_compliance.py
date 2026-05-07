@@ -91,3 +91,28 @@ with tab2:
             st.success("No TDS rate mismatches detected.")
 
         st.info(f"TDS deposit due: {cal['tds']['general_deposit']['due_day_of_following_month']}th of following month | Late interest: {cal['tds']['interest_late_deposit']['section_201_1a']}%/month")
+
+
+# --- AI Audit Report (RAG) ---
+try:
+    from utils.audit_page_helpers import render_rag_report_section
+    flagged_rag_df = type1 if 'type1' in locals() and type1 is not None and not type1.empty else None
+    if flagged_rag_df is not None:
+        render_rag_report_section(
+            "gst",
+            flagged_df=flagged_rag_df,
+            module_name="Gst Tds Compliance"
+        )
+    else:
+        st.caption("ℹ️ No flagged data for RAG report.")
+except Exception as _e:
+    st.caption(f"RAG report unavailable: {_e}")
+
+
+
+# --- Draft Review ---
+try:
+    from utils.audit_page_helpers import render_draft_review_section
+    render_draft_review_section("gst", "Gst Tds Compliance")
+except Exception as _e:
+    st.caption(f"Draft review unavailable: {_e}")

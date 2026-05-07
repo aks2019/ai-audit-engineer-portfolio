@@ -83,6 +83,17 @@ if uploaded:
     log_df["risk_band"] = "HIGH"
     if not log_df.empty:
         checker.log_to_db(log_df, area="Duplicate Invoices", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
+        # ── Stage Findings for Draft Review ──
+        from utils.audit_db import stage_findings as _stage_findings
+        _staged = _stage_findings(
+            log_df,
+            module_name="Duplicate Invoice Detector",
+            run_id=run_id,
+            period=datetime.utcnow().strftime("%Y-%m"),
+            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+        )
+        st.info(f"📋 {_staged} exception(s) staged for your review.")
+        st.session_state.draft_run_id = run_id
         st.caption(f"📝 {len(log_df)} findings logged")
 
     # Fraud score & block recommendation
@@ -91,3 +102,28 @@ if uploaded:
         blocked = df[df["fraud_score"] > 0.85]
         if not blocked.empty:
             st.error(f"🚫 {len(blocked)} invoices recommended for payment block via FB02 (Payment Block = A)")
+
+
+# --- AI Audit Report (RAG) ---
+try:
+    from utils.audit_page_helpers import render_rag_report_section
+    flagged_rag_df = exact if 'exact' in locals() and exact is not None and not exact.empty else None
+    if flagged_rag_df is not None:
+        render_rag_report_section(
+            "dup",
+            flagged_df=flagged_rag_df,
+            module_name="Duplicate Invoice Detector"
+        )
+    else:
+        st.caption("ℹ️ No flagged data for RAG report.")
+except Exception as _e:
+    st.caption(f"RAG report unavailable: {_e}")
+
+
+
+# --- Draft Review ---
+try:
+    from utils.audit_page_helpers import render_draft_review_section
+    render_draft_review_section("dup", "Duplicate Invoice Detector")
+except Exception as _e:
+    st.caption(f"Draft review unavailable: {_e}")
