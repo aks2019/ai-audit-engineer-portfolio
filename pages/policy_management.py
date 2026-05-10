@@ -7,7 +7,7 @@ import tempfile
 import os
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from utils.rag_engine import get_vectorstore
+from utils.rag_engine import _get_vectorstore_safe
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_core.documents import Document
 
@@ -15,7 +15,15 @@ st.set_page_config(page_title="🗄️ Policy Manager", layout="wide")
 st.title("🗄️ Policy & Contract Management")
 st.caption("Single-window ingest | inspect | cleanup | audit trail | FMCG/SAP compliant")
 
-vectorstore = get_vectorstore()
+vectorstore = None
+vectorstore_error = None
+
+
+def _ensure_vectorstore():
+    global vectorstore, vectorstore_error
+    if vectorstore is None and vectorstore_error is None:
+        vectorstore, vectorstore_error = _get_vectorstore_safe()
+    return vectorstore, vectorstore_error
 
 # ── TAB 1: Upload & Ingest ─────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["📤 Upload & Ingest", "🔍 Inspect Indexed Documents", "🗑️ Cleanup & Maintenance"])
@@ -29,6 +37,10 @@ with tab1:
     )
 
     if uploaded_files and st.button("🚀 Ingest Selected Files", type="primary", use_container_width=True):
+        vectorstore, vectorstore_error = _ensure_vectorstore()
+        if vectorstore is None:
+            st.error(f"Vector store unavailable: {vectorstore_error}")
+            st.stop()
         with st.spinner("Indexing into pgvector 'audit_policies'..."):
             ingested_count = 0
             for uploaded_file in uploaded_files:
@@ -88,6 +100,10 @@ with tab1:
 # ── TAB 2: Inspect ─────────────────────────────────────────────
 with tab2:
     if st.button("🔄 Refresh Full Index", use_container_width=True):
+        vectorstore, vectorstore_error = _ensure_vectorstore()
+        if vectorstore is None:
+            st.error(f"Vector store unavailable: {vectorstore_error}")
+            st.stop()
         with st.spinner("Fetching all documents from pgvector..."):
             docs = vectorstore.similarity_search("", k=500)  # exact pattern from inspect_rag_documents.py
             if docs:
@@ -116,6 +132,10 @@ with tab3:
     # Option A: Delete by source filename (most common need)
     filename_to_delete = st.text_input("Delete all chunks for specific file (exact filename)", placeholder="MANGALORE SEZ LIMITED.pdf")
     if filename_to_delete and st.button("🗑️ Delete by Filename", type="secondary"):
+        vectorstore, vectorstore_error = _ensure_vectorstore()
+        if vectorstore is None:
+            st.error(f"Vector store unavailable: {vectorstore_error}")
+            st.stop()
         with st.spinner("Deleting..."):
             try:
                 # Use metadata filter (PGVector native support)
@@ -127,6 +147,10 @@ with tab3:
     # Option B: Full collection reset (exact from cleanup_rag_documents.py)
     if st.checkbox("I want to **completely reset** the entire policy repository (full delete_collection)"):
         if st.button("🚨 FULL RESET – Delete Entire Collection", type="primary"):
+            vectorstore, vectorstore_error = _ensure_vectorstore()
+            if vectorstore is None:
+                st.error(f"Vector store unavailable: {vectorstore_error}")
+                st.stop()
             with st.spinner("Resetting pgvector collection..."):
                 vectorstore.delete_collection()
                 st.success("✅ Entire 'audit_policies' collection deleted. Next ingest will recreate it.")

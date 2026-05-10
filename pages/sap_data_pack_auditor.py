@@ -15,12 +15,18 @@ from checks.sap import (
 from utils.audit_db import (
     init_audit_db,
     stage_findings,
-    load_draft_findings,
-    confirm_draft_findings,
-    discard_draft_findings,
+)
+from utils.audit_page_helpers import (
+    render_engagement_selector,
+    get_active_engagement_id,
+    render_rag_report_section,
+    render_draft_review_section,
 )
 
 st.set_page_config(page_title="SAP Data Pack Auditor", page_icon="📦", layout="wide")
+
+PAGE_KEY = "sap_data_pack"
+render_engagement_selector(PAGE_KEY)
 
 # ── SESSION STATE ──────────────────────────────────────────────────
 if "sap_packs" not in st.session_state:
@@ -31,8 +37,8 @@ if "sap_report" not in st.session_state:
     st.session_state["sap_report"] = {}
 if "sap_all_issues" not in st.session_state:
     st.session_state["sap_all_issues"] = []
-if "draft_run_id" not in st.session_state:
-    st.session_state["draft_run_id"] = None
+if f"{PAGE_KEY}_draft_run_id" not in st.session_state:
+    st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
 if "sap_column_maps" not in st.session_state:
     st.session_state["sap_column_maps"] = {}
 
@@ -193,7 +199,7 @@ if upload_method == "Single File (select pack type)":
                 st.session_state["sap_analysis_done"] = False
                 st.session_state["sap_report"] = {}
                 st.session_state["sap_all_issues"] = []
-                st.session_state["draft_run_id"] = None
+                st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
 
         except Exception as e:
             st.error(f"Failed to read file: {e}")
@@ -258,7 +264,7 @@ else:
             st.session_state["sap_analysis_done"] = False
             st.session_state["sap_report"] = {}
             st.session_state["sap_all_issues"] = []
-            st.session_state["draft_run_id"] = None
+            st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
 
 # ── STEP 2: Loaded Packs Summary ──────────────────────────────────
 if st.session_state["sap_packs"]:
@@ -295,7 +301,7 @@ if st.session_state["sap_packs"]:
             st.session_state["sap_analysis_done"] = False
             st.session_state["sap_report"] = {}
             st.session_state["sap_all_issues"] = []
-            st.session_state["draft_run_id"] = None
+            st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
             st.rerun()
 
     if run_analysis:
@@ -352,8 +358,9 @@ if st.session_state["sap_packs"]:
                     run_id=file_run_id,
                     period=datetime.utcnow().strftime("%Y-%m"),
                     source_file_name=source_filename,
+                    engagement_id=get_active_engagement_id(PAGE_KEY),
                 )
-                st.session_state["draft_run_id"] = file_run_id
+                st.session_state[f"{PAGE_KEY}_draft_run_id"] = file_run_id
 
                 st.success(
                     f"✅ **{staged} exception(s) staged for your review.** "
@@ -491,138 +498,16 @@ if st.session_state["sap_packs"]:
                 "text/csv",
             )
 
-        # ── REVIEW & CONFIRM FINDINGS (Maker-Checker) ──────────────
-        st.divider()
-        st.subheader("✅ Review & Confirm Findings")
-        st.caption(
-            "Exceptions are **staged as drafts** — nothing enters the official audit trail "
-            "until you confirm here. Edit finding text or risk band before confirming. "
-            "Discard false positives without them appearing in any report."
-        )
-
-        current_run_id = st.session_state.get("draft_run_id")
-        drafts = load_draft_findings(
-            run_id=current_run_id,
+        # ── AI AUDIT REPORT (RAG) ──────────────────────────────────
+        flagged_df = pd.DataFrame(st.session_state["sap_all_issues"]) if st.session_state["sap_all_issues"] else pd.DataFrame()
+        render_rag_report_section(
+            PAGE_KEY,
+            flagged_df=flagged_df if not flagged_df.empty else None,
             module_name="SAP Data Pack Auditor",
-            status="Draft",
         )
 
-        if drafts.empty:
-            already_confirmed = load_draft_findings(
-                run_id=current_run_id,
-                module_name="SAP Data Pack Auditor",
-                status="Confirmed",
-            )
-            if not already_confirmed.empty:
-                st.success(
-                    f"All {len(already_confirmed)} exception(s) for this run have already "
-                    "been confirmed and added to the audit trail."
-                )
-            else:
-                st.info("No staged exceptions found. Upload files and run analysis first.")
-        else:
-            st.caption(
-                f"**{len(drafts)} draft exception(s)** pending review  |  "
-                f"run `{current_run_id}`"
-            )
-
-            # Editable table
-            review_df = drafts[["id", "vendor_name", "finding", "amount_at_risk", "risk_band"]].copy()
-            edited = st.data_editor(
-                review_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
-                    "vendor_name": st.column_config.TextColumn("Entity", disabled=True),
-                    "finding": st.column_config.TextColumn("Finding (editable)", width="large"),
-                    "amount_at_risk": st.column_config.NumberColumn("Amount at Risk ₹", format="%.0f"),
-                    "risk_band": st.column_config.SelectboxColumn(
-                        "Risk Band",
-                        options=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
-                    ),
-                },
-                key="draft_editor_sap",
-            )
-
-            all_ids = drafts["id"].tolist()
-            id_labels = {
-                row["id"]: f"ID {row['id']} — {row['vendor_name']} (₹{row['amount_at_risk']:,.0f}, {row['risk_band']})"
-                for _, row in drafts.iterrows()
-            }
-            selected_ids = st.multiselect(
-                "Select exceptions to act on",
-                options=all_ids,
-                default=all_ids,
-                format_func=lambda i: id_labels.get(i, str(i)),
-            )
-
-            confirmed_by = st.text_input(
-                "Confirmed / Reviewed by (auditor name)",
-                value="Auditor",
-                key="confirmed_by_sap",
-            )
-
-            c_confirm, c_discard = st.columns(2)
-
-            with c_confirm:
-                if st.button(
-                    "✅ Confirm Selected → Official Audit Trail",
-                    type="primary",
-                    use_container_width=True,
-                    key="confirm_sap",
-                ):
-                    if not selected_ids:
-                        st.warning("Select at least one exception to confirm.")
-                    else:
-                        edited_vals = {
-                            int(row["id"]): {
-                                "finding": row.get("finding", ""),
-                                "amount_at_risk": row.get("amount_at_risk", 0),
-                                "risk_band": row.get("risk_band", "MEDIUM"),
-                            }
-                            for _, row in edited.iterrows()
-                        }
-                        n = confirm_draft_findings(
-                            selected_ids,
-                            confirmed_by=confirmed_by.strip() or "Auditor",
-                            edited_values=edited_vals,
-                        )
-                        st.success(
-                            f"✅ **{n} finding(s) confirmed** and added to the official "
-                            "audit trail. They will now appear in P16, P17, and all reports."
-                        )
-                        st.rerun()
-
-            with c_discard:
-                discard_reason = st.text_input(
-                    "Discard reason (optional)", key="discard_reason_sap"
-                )
-                if st.button(
-                    "🗑️ Discard Selected (False Positives)",
-                    use_container_width=True,
-                    key="discard_sap",
-                ):
-                    if not selected_ids:
-                        st.warning("Select at least one exception to discard.")
-                    else:
-                        n = discard_draft_findings(
-                            selected_ids,
-                            discarded_by=confirmed_by.strip() or "Auditor",
-                            reason=discard_reason or "False positive — auditor review",
-                        )
-                        st.info(f"🗑️ **{n} exception(s) discarded.** They will not appear in reports.")
-                        st.rerun()
-
-            # Export draft before deciding
-            csv_draft = drafts.to_csv(index=False).encode()
-            st.download_button(
-                "📥 Export Draft Exceptions as CSV",
-                csv_draft,
-                "draft_exceptions_sap.csv",
-                "text/csv",
-                key="export_drafts_sap",
-            )
+        # ── REVIEW & CONFIRM FINDINGS (Maker-Checker) ──────────────
+        render_draft_review_section(PAGE_KEY, "SAP Data Pack Auditor")
 
 else:
     st.info(

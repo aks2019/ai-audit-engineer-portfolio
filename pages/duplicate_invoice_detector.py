@@ -11,9 +11,13 @@ from sklearn.ensemble import IsolationForest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
 from utils.base_audit_check import BaseAuditCheck
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "dup"
 
 st.title("🎭 Duplicate Payments & Invoice Fraud Detector")
 st.caption("Purchasing D.3–D.12 | SAP: FBL1N / ME2N")
+render_engagement_selector(PAGE_KEY)
 
 uploaded = st.file_uploader("Upload Invoice/Payment Register (CSV/Excel)", type=["csv","xlsx"])
 if uploaded:
@@ -68,33 +72,35 @@ if uploaded:
         fig = px.bar(benford, x="digit", y=["expected_pct","observed_pct"], barmode="group")
         st.plotly_chart(fig, use_container_width=True)
 
-    # Log
+    # ── Stage Findings for Draft Review (NOT auto-logged) ──
     init_audit_db()
     run_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    class _DupCheck(BaseAuditCheck):
-        name = "Duplicate Invoice"
-        checklist_ref = "Purchasing D.3–D.12"
-        sap_tcode_standard_alt = "FBL1N / ME2N"
-        def detect(self, df: pd.DataFrame) -> pd.DataFrame:
-            return df
-    checker = _DupCheck()
-    log_df = exact.head(100).copy()
-    log_df["flag_reason"] = "Exact duplicate invoice"
-    log_df["risk_band"] = "HIGH"
-    if not log_df.empty:
-        checker.log_to_db(log_df, area="Duplicate Invoices", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
-        # ── Stage Findings for Draft Review ──
+    
+    # Prepare findings DataFrame with required columns for staging
+    staging_df = exact.head(100).copy()
+    staging_df["area"] = "Duplicate Invoices"
+    staging_df["checklist_ref"] = "Purchasing D.3–D.12"
+    staging_df["finding"] = staging_df.apply(
+        lambda r: f"Exact duplicate invoice detected for vendor '{r.get('vendor_name', 'Unknown')}' — Invoice #{r.get('invoice_no', 'N/A')} amount ₹{r.get('amount', 0):,.0f}", 
+        axis=1
+    )
+    staging_df["amount_at_risk"] = staging_df["amount"]
+    staging_df["risk_band"] = "HIGH"
+    staging_df["vendor_name"] = staging_df.get("vendor_name", "")
+    staging_df["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    if not staging_df.empty:
         from utils.audit_db import stage_findings as _stage_findings
         _staged = _stage_findings(
-            log_df,
+            staging_df,
             module_name="Duplicate Invoice Detector",
             run_id=run_id,
             period=datetime.utcnow().strftime("%Y-%m"),
-            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+            source_file_name=getattr(uploaded, "name", "manual"),
+            engagement_id=get_active_engagement_id(PAGE_KEY),
         )
-        st.info(f"📋 {_staged} exception(s) staged for your review.")
-        st.session_state.draft_run_id = run_id
-        st.caption(f"📝 {len(log_df)} findings logged")
+        st.info(f"📋 **{_staged} exception(s) staged for your review.** Nothing has been added to the official audit trail yet.")
+        st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
 
     # Fraud score & block recommendation
     if not df.empty:

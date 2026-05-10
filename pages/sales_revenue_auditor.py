@@ -8,8 +8,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
 from utils.base_audit_check import BaseAuditCheck
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "sales"
 
 st.title("📈 Sales & Revenue Integrity Auditor")
+render_engagement_selector(PAGE_KEY)
 st.caption("SAP HO — CSD, Export, CPD | Ind AS 115 | SAP: VF05 / VA05 / VKM3")
 
 uploaded = st.file_uploader("Upload Sales Register (CSV/Excel)", type=["csv","xlsx"])
@@ -70,17 +74,18 @@ if uploaded:
             module_name="Sales Revenue Auditor",
             run_id=run_id,
             period=datetime.utcnow().strftime("%Y-%m"),
-            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+            source_file_name=getattr(uploaded, "name", "manual"),
+            engagement_id=get_active_engagement_id(PAGE_KEY),
         )
         st.info(f"📋 {_staged} exception(s) staged for your review.")
-        st.session_state.draft_run_id = run_id
+        st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
         st.caption(f"📝 Findings logged")
 
 
 # --- AI Audit Report (RAG) ---
 try:
     from utils.audit_page_helpers import render_rag_report_section
-    flagged_rag_df = exceptions if 'exceptions' in locals() and exceptions is not None and not exceptions.empty else None
+    flagged_rag_df = early if 'early' in locals() and early is not None and not early.empty else (cn_high if 'cn_high' in locals() and cn_high is not None and not cn_high.empty else None)
     if flagged_rag_df is not None:
         render_rag_report_section(
             "sales",

@@ -6,6 +6,9 @@ from pathlib import Path
 import shutil
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.engagements import create_engagement, list_engagements, update_engagement
+from utils.audit_db import init_audit_db
+from utils.audit_page_helpers import ACTIVE_ENGAGEMENT_ID_KEY, ACTIVE_ENGAGEMENT_NAME_KEY
 
 st.set_page_config(page_title="Audit Session Manager", layout="wide")
 st.title("📅 Audit Session Manager")
@@ -14,20 +17,37 @@ st.caption("Full Database Maintenance • Archive • Restore • Switch Engagem
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "audit.db"
+init_audit_db()
 
 # ====================== HELPER FUNCTIONS ======================
 def get_current_engagements():
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql("""
-        SELECT period, run_id, COUNT(*) as findings_count,
-               MAX(finding_date) as last_activity,
-               GROUP_CONCAT(DISTINCT area) as areas
-        FROM audit_findings 
-        GROUP BY period, run_id 
-        ORDER BY period DESC, run_id DESC
+        SELECT e.id, e.name, e.status, e.start_date, e.end_date, e.created_at,
+               COUNT(f.id) as findings_count,
+               SUM(CASE WHEN f.status = 'Open' THEN 1 ELSE 0 END) as open_findings,
+               MAX(f.opened_at) as last_activity
+        FROM audit_engagements e
+        LEFT JOIN audit_findings f ON f.engagement_id = e.id
+        GROUP BY e.id, e.name, e.status, e.start_date, e.end_date, e.created_at
+        ORDER BY e.created_at DESC
     """, conn)
     conn.close()
     return df
+
+def set_active_engagement(engagement_id: int, engagement_name: str):
+    st.session_state[ACTIVE_ENGAGEMENT_ID_KEY] = int(engagement_id)
+    st.session_state[ACTIVE_ENGAGEMENT_NAME_KEY] = engagement_name
+
+def get_latest_engagement():
+    engs = list_engagements()
+    if not engs.empty and "status" in engs.columns:
+        open_engs = engs[engs["status"].fillna("") != "Archived"]
+        if not open_engs.empty:
+            engs = open_engs
+    if engs.empty:
+        return None
+    return engs.iloc[0]
 
 def list_backups():
     backups = list(DATA_DIR.glob("audit_backup_*.db"))
@@ -35,7 +55,28 @@ def list_backups():
     for b in sorted(backups, reverse=True):
         size = b.stat().st_size / (1024*1024)  # MB
         ts = b.stem.replace("audit_backup_", "")
-        data.append({"filename": b.name, "timestamp": ts, "size_mb": round(size, 2)})
+        # Extract engagement name from backup database
+        engagement_name = "Unknown"
+        try:
+            conn = sqlite3.connect(b)
+            cursor = conn.cursor()
+            # Get the most recent active engagement name from this backup
+            result = cursor.execute(
+                "SELECT name FROM audit_engagements WHERE status != 'Archived' ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            if result:
+                engagement_name = result[0]
+            else:
+                # Try any engagement if none are active
+                result = cursor.execute(
+                    "SELECT name FROM audit_engagements ORDER BY created_at DESC LIMIT 1"
+                ).fetchone()
+                if result:
+                    engagement_name = result[0]
+            conn.close()
+        except Exception:
+            engagement_name = "Unknown"
+        data.append({"filename": b.name, "timestamp": ts, "engagement_name": engagement_name, "size_mb": round(size, 2)})
     return pd.DataFrame(data)
 
 def restore_backup(backup_path: str):
@@ -46,32 +87,55 @@ def restore_backup(backup_path: str):
     # Backup current before restore
     shutil.copy(DB_PATH, DATA_DIR / f"audit_pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     shutil.copy(backup_file, DB_PATH)
+    latest = get_latest_engagement()
+    if latest is not None:
+        set_active_engagement(int(latest["id"]), str(latest["name"]))
     return True
 
 # ====================== MAIN UI ======================
 tab1, tab2, tab3, tab4 = st.tabs(["Current Engagements", "Backup & Restore", "Maintenance", "System Setup"])
 
 with tab1:
-    st.subheader("Active Engagements in audit.db")
+    st.subheader("Engagement Management")
     df_current = get_current_engagements()
     if not df_current.empty:
-        st.dataframe(df_current, use_container_width=True)
+        active_id = st.session_state.get(ACTIVE_ENGAGEMENT_ID_KEY)
+        ids = df_current["id"].tolist()
+        default_index = ids.index(active_id) if active_id in ids else 0
+        selected_id = st.selectbox(
+            "Active Engagement for Detection Pages",
+            ids,
+            index=default_index,
+            format_func=lambda i: df_current.loc[df_current["id"] == i, "name"].iloc[0],
+        )
+        selected_name = df_current.loc[df_current["id"] == selected_id, "name"].iloc[0]
+        set_active_engagement(selected_id, selected_name)
+        st.success(f"Active engagement: {selected_name} (ID {selected_id})")
+        st.dataframe(df_current, use_container_width=True, hide_index=True)
     else:
-        st.info("No findings yet in current engagement.")
+        st.info("No audit engagements yet. Start one from Backup & Restore.")
 
 with tab2:
     st.subheader("Saved Audit Engagements (Backups)")
     df_backups = list_backups()
     
     if not df_backups.empty:
-        st.dataframe(df_backups, use_container_width=True)
+        st.dataframe(df_backups, use_container_width=True, column_config={
+            "filename": st.column_config.TextColumn("Backup File"),
+            "engagement_name": st.column_config.TextColumn("Engagement Name"),
+            "timestamp": st.column_config.TextColumn("Timestamp"),
+            "size_mb": st.column_config.NumberColumn("Size (MB)", format="%.2f")
+        })
         
         col1, col2 = st.columns([3,1])
         with col1:
+            # Create a mapping for display - show engagement name + timestamp
+            backup_options = df_backups["filename"].tolist()
+            backup_display = {row["filename"]: f"{row['engagement_name']} ({row['timestamp']})" for _, row in df_backups.iterrows()}
             selected_backup = st.selectbox(
                 "Select backup to restore",
-                df_backups["filename"].tolist(),
-                format_func=lambda x: x.replace("audit_backup_", "")
+                backup_options,
+                format_func=lambda x: backup_display.get(x, x)
             )
         with col2:
             if st.button("🔄 Restore this Engagement", type="primary", use_container_width=True):
@@ -84,8 +148,8 @@ with tab2:
     # Start New Engagement
     st.divider()
     st.subheader("🚀 Start New Audit Engagement")
-    engagement_name = st.text_input("Engagement Name", value=f"FY{datetime.now().year}_Q{((datetime.now().month-1)//3)+1}_Emami")
-    company_code = st.text_input("Company Code", value="EMAMI")
+    engagement_name = st.text_input("Engagement Name", value=f"FY{datetime.now().year}_Q{((datetime.now().month-1)//3)+1}_Sarvagya")
+    company_code = st.text_input("Company Code", value="Sarvagya")
     period = st.text_input("Period (YYYY-MM)", value=datetime.now().strftime("%Y-%m"))
 
     if st.button("Start New Engagement & Archive Current", type="primary", use_container_width=True):
@@ -103,8 +167,22 @@ with tab2:
         conn.execute("DELETE FROM sampling_runs")
         conn.commit()
         conn.close()
+
+        current_active_id = st.session_state.get(ACTIVE_ENGAGEMENT_ID_KEY)
+        if current_active_id:
+            update_engagement(current_active_id, status="Archived")
+
+        start_date = period + "-01" if len(period) == 7 else None
+        description = f"Company Code: {company_code} | Period: {period}"
+        new_engagement_id = create_engagement(
+            engagement_name,
+            description=description,
+            start_date=start_date,
+            status="Ongoing",
+        )
+        set_active_engagement(new_engagement_id, engagement_name)
         
-        st.success(f"✅ **{engagement_name}** started for {company_code} / {period}")
+        st.success(f"Engagement **{engagement_name}** started for {company_code} / {period} and set as active engagement ID {new_engagement_id}")
         st.rerun()
 
 with tab3:

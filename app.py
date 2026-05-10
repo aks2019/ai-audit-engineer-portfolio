@@ -9,11 +9,87 @@ from utils.industry_filter import (
 )
 from utils.audit_db import load_findings, get_kpis
 from core.init_audit_system import initialize_audit_system
+from core.rbac import init_rbac, get_user, has_permission
 
 st.set_page_config(page_title="AI Audit Engineer", page_icon="🚨", layout="wide")
 
+# ── RBAC INITIALIZATION ─────────────────────────────────────────────
+# Initialize RBAC tables on first run
+if "rbac_initialized" not in st.session_state:
+    init_rbac()
+    st.session_state["rbac_initialized"] = True
+
+# ── LOGIN GATE ─────────────────────────────────────────────────────
+# Initialize session state for authentication
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "current_user" not in st.session_state:
+    st.session_state["current_user"] = None
+if "current_role" not in st.session_state:
+    st.session_state["current_role"] = None
+
+def login_user(username: str, password: str = None) -> bool:
+    """Authenticate user and set session state."""
+    user = get_user(username)
+    if user and user.get("status") == "Active":
+        st.session_state["logged_in"] = True
+        st.session_state["current_user"] = username
+        st.session_state["current_role"] = user.get("role", "viewer")
+        # Update last login
+        import sqlite3
+        conn = sqlite3.connect("data/audit.db")
+        conn.execute("UPDATE audit_users SET last_login = CURRENT_TIMESTAMP WHERE username = ?", (username,))
+        conn.commit()
+        conn.close()
+        return True
+    return False
+
+def logout_user():
+    """Clear session state and log out."""
+    st.session_state["logged_in"] = False
+    st.session_state["current_user"] = None
+    st.session_state["current_role"] = None
+    st.rerun()
+
 # ── SIDEBAR ────────────────────────────────────────────────────────
 st.sidebar.title("AI Audit Engineer")
+
+# Login/Logout Section
+if not st.session_state["logged_in"]:
+    with st.sidebar.expander("🔐 Login", expanded=True):
+        login_username = st.text_input("Username", placeholder="Enter username", key="login_user_input")
+        login_password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass_input")
+        col_login, col_guest = st.columns(2)
+        with col_login:
+            if st.button("Login", type="primary", use_container_width=True):
+                if login_user(login_username, login_password):
+                    st.success(f"Welcome, {login_username}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials or inactive user")
+        with col_guest:
+            if st.button("Guest", use_container_width=True):
+                # Set as guest viewer
+                st.session_state["logged_in"] = True
+                st.session_state["current_user"] = "guest"
+                st.session_state["current_role"] = "viewer"
+                st.rerun()
+    
+    st.sidebar.divider()
+    st.sidebar.warning("⚠️ You are browsing as guest. Some features may be restricted.")
+else:
+    # Display logged-in user info
+    user_info = get_user(st.session_state["current_user"])
+    display_name = user_info.get("display_name", st.session_state["current_user"]) if user_info else st.session_state["current_user"]
+    
+    with st.sidebar.expander(f"👤 {display_name} ({st.session_state['current_role'].upper()})", expanded=True):
+        st.markdown(f"**Role:** {st.session_state['current_role'].capitalize()}")
+        if user_info and user_info.get("email"):
+            st.markdown(f"**Email:** {user_info.get('email')}")
+        if st.button("🚪 Logout", use_container_width=True):
+            logout_user()
+    
+    st.sidebar.divider()
 
 profiles = ["manufacturing_fmcg", "it_services", "healthcare_pharma", "retail", "financial_services"]
 current = get_current_profile_name()
@@ -51,13 +127,39 @@ if is_page_enabled("contract_management"):
     st.sidebar.page_link("pages/contract_management_auditor.py", label="📜 P22: Contract Management")
 st.sidebar.divider()
 st.sidebar.markdown("**🔧 Phase 2 Tools**")
-st.sidebar.page_link("pages/audit_workflow.py", label="🔄 P23: Audit Workflow Engine")
+
+# Audit Workflow - requires maker-checker approval permissions
+if has_permission(st.session_state["current_user"], "approve_maker_checker"):
+    st.sidebar.page_link("pages/audit_workflow.py", label="🔄 P23: Audit Workflow Engine")
+else:
+    st.sidebar.page_link("pages/audit_workflow.py", label="🔄 P23: Audit Workflow Engine", disabled=True)
+
 st.sidebar.page_link("pages/nlp_document_intelligence.py", label="🧠 P24: NLP Doc Intelligence")
 st.sidebar.page_link("pages/multi_company_dashboard.py", label="🏢 P25: Multi-Company View")
 st.sidebar.page_link("pages/statistical_sampling.py", label="📐 P26: Statistical Sampling")
 st.sidebar.page_link("pages/audit_kpi_dashboard.py", label="📊 P27: Audit KPI Dashboard")
-st.sidebar.page_link("pages/audit_session_manager.py", label="📅 P28: Audit Session Manager")
-st.sidebar.page_link("pages/policy_management.py", label="🗄️ P29: Policy Management")
+
+# Audit Session Manager - requires edit permissions
+if has_permission(st.session_state["current_user"], "edit_engagement"):
+    st.sidebar.page_link("pages/audit_session_manager.py", label="📅 P28: Audit Session Manager")
+else:
+    st.sidebar.page_link("pages/audit_session_manager.py", label="📅 P28: Audit Session Manager", disabled=True)
+
+# Policy Management - requires manage policies permission
+if has_permission(st.session_state["current_user"], "manage_policies"):
+    st.sidebar.page_link("pages/policy_management.py", label="🗄️ P29: Policy Management")
+else:
+    st.sidebar.page_link("pages/policy_management.py", label="🗄️ P29: Policy Management", disabled=True)
+
+# Role Badge
+st.sidebar.divider()
+role_badge = {
+    "admin": "🔴 Admin",
+    "auditor": "🟡 Auditor", 
+    "reviewer": "🔵 Reviewer",
+    "viewer": "⚪ Viewer"
+}.get(st.session_state["current_role"], "⚪ Guest")
+st.sidebar.caption(f"Session: {role_badge}")
 
 with st.sidebar.expander("📚 SAP T-Code Reference"):
     st.markdown("""

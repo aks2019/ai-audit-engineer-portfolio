@@ -36,8 +36,14 @@ class BaseAuditCheck(ABC):
         return [c for c in self.required_columns if c not in df.columns]
 
     def log_to_db(self, flagged_df: pd.DataFrame, area: str, period: str, run_id: str,
-                  company_code: str = "HQ", plant_code: str = ""):
-        """Write findings to shared SQLite audit trail."""
+                  company_code: str = "HQ", plant_code: str = "", insert_official: bool = False):
+        """Optionally write findings to official SQLite audit trail.
+
+        Default is False because detection pages now use draft staging + maker-checker
+        confirmation before anything enters the official trail.
+        """
+        if not insert_official:
+            return
         import sqlite3
         from pathlib import Path
         Path("data").mkdir(exist_ok=True)

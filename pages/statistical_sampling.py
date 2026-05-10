@@ -7,8 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import save_sampling_run
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "sample"
 
 st.title("📐 Statistical Sampling Engine")
+render_engagement_selector(PAGE_KEY)
 st.caption("Monetary Unit Sampling (MUS) | Random Sampling | Cell Sampling | Confidence-based")
 
 uploaded = st.file_uploader("Upload Population Data (CSV/Excel)", type=["csv","xlsx"])
@@ -73,15 +77,16 @@ if uploaded:
 # --- AI Audit Report (RAG) ---
 try:
     from utils.audit_page_helpers import render_rag_report_section
-    flagged_rag_df = flagged if 'flagged' in locals() and flagged is not None and not flagged.empty else None
-    if flagged_rag_df is not None:
+    # sample variable contains the drawn sample (which represents audited items)
+    sample_df = sample if 'sample' in locals() and sample is not None and not sample.empty else None
+    if sample_df is not None:
         render_rag_report_section(
-            "sample",
-            flagged_df=flagged_rag_df,
+            PAGE_KEY,
+            flagged_df=sample_df,
             module_name="Statistical Sampling"
         )
     else:
-        st.caption("ℹ️ No flagged data for RAG report.")
+        st.caption("ℹ️ Draw a sample first to enable RAG audit report.")
 except Exception as _e:
     st.caption(f"RAG report unavailable: {_e}")
 

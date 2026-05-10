@@ -11,8 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
 from utils.base_audit_check import BaseAuditCheck
 from utils.compliance_loader import load_compliance_calendar
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "brs"
 
 st.title("🏦 BRS Anomaly & Auto-Matching Agent")
+render_engagement_selector(PAGE_KEY)
 st.caption("Bank Reconciliation + Treasury Checklist A.2, A.3, A.10, A.13, A.14e, A.20 | SAP: FF67 + FBL3N")
 
 bank_file = st.file_uploader("Upload Bank Statement (CSV/Excel)", type=["csv","xlsx"], key="bank")
@@ -88,33 +92,35 @@ if bank_file and gl_file:
                 st.subheader("🚨 High-Risk Unmatched Items (IsolationForest)")
                 st.dataframe(high_risk, use_container_width=True)
 
-        # Log to SQLite
+        # ── Stage Findings for Draft Review (NOT auto-logged) ──
         init_audit_db()
         run_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-        class _BRSCheck(BaseAuditCheck):
-            name = "BRS Reconciliation"
-            checklist_ref = "Treasury A.2/A.3"
-            sap_tcode_standard_alt = "FF67 / FBL3N"
-            def detect(self, df: pd.DataFrame) -> pd.DataFrame:
-                return df
-        checker = _BRSCheck()
-        log_df = unmatched_bank.head(100).copy()
-        log_df["flag_reason"] = "Unmatched bank item"
-        log_df["risk_band"] = "HIGH"
-        if not log_df.empty:
-            checker.log_to_db(log_df, area="Bank Reconciliation", period=datetime.utcnow().strftime("%Y-%m"), run_id=run_id)
-            # ── Stage Findings for Draft Review ──
+        
+        # Prepare findings DataFrame with required columns for staging
+        staging_df = unmatched_bank.head(100).copy()
+        staging_df["area"] = "Bank Reconciliation"
+        staging_df["checklist_ref"] = "Treasury A.2/A.3"
+        staging_df["finding"] = staging_df.apply(
+            lambda r: f"Unmatched bank item: ₹{abs(r.get('amount', 0)):,.0f} on {r.get('date', 'Unknown date')}", 
+            axis=1
+        )
+        staging_df["amount_at_risk"] = staging_df["amount"].abs()
+        staging_df["risk_band"] = "HIGH"
+        staging_df["vendor_name"] = staging_df.get("vendor_name", "")
+        staging_df["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
+        
+        if not staging_df.empty:
             from utils.audit_db import stage_findings as _stage_findings
             _staged = _stage_findings(
-                log_df,
+                staging_df,
                 module_name="Brs Reconciliation",
                 run_id=run_id,
                 period=datetime.utcnow().strftime("%Y-%m"),
-                source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+                source_file_name=getattr(bank_file, "name", "manual"),
+                engagement_id=get_active_engagement_id(PAGE_KEY),
             )
-            st.info(f"📋 {_staged} exception(s) staged for your review.")
-            st.session_state.draft_run_id = run_id
-            st.caption(f"📝 {len(log_df)} findings logged to audit.db")
+            st.info(f"📋 **{_staged} exception(s) staged for your review.** Nothing has been added to the official audit trail yet.")
+            st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
 
 
 # --- AI Audit Report (RAG) ---

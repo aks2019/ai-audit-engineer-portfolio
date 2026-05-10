@@ -8,8 +8,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
 from utils.base_audit_check import BaseAuditCheck
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "itgc"
 
 st.title("🔐 IT General Controls & SAP Authorization Audit")
+render_engagement_selector(PAGE_KEY)
 st.caption("Companies Act Section 143(3)(i) | SoD Matrix | SAP: SU01 / SUIM / SM20")
 
 # Built-in SoD Conflict Matrix
@@ -93,10 +97,11 @@ if uploaded:
             module_name="Itgc Sap Access Auditor",
             run_id=run_id,
             period=datetime.utcnow().strftime("%Y-%m"),
-            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+            source_file_name=getattr(uploaded, "name", "manual"),
+            engagement_id=get_active_engagement_id(PAGE_KEY),
         )
         st.info(f"📋 {_staged} exception(s) staged for your review.")
-        st.session_state.draft_run_id = run_id
+        st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
         st.caption(f"📝 {len(log_df)} SoD findings logged")
 
 

@@ -523,14 +523,30 @@ def stage_findings(findings_df: pd.DataFrame, module_name: str, run_id: str = No
     staged_count = 0
 
     for _, row in findings_df.iterrows():
+        area_value = str(row.get("area", "")).strip() or module_name
+        finding_value = str(row.get("finding", "")).strip() or str(row.get("flag_reason", "Anomaly detected")).strip() or "Anomaly detected"
         finding_data = {
-            "area": row.get("area", ""),
-            "finding": row.get("finding", ""),
+            "area": area_value,
+            "finding": finding_value,
             "vendor_name": row.get("vendor_name", ""),
             "amount_at_risk": row.get("amount_at_risk", 0),
             "period": row.get("period", period)
         }
         finding_hash = compute_finding_hash(finding_data)
+        # Idempotency guard: do not stage the exact same finding again for the same
+        # module/engagement while it is already Draft/Confirmed.
+        existing = cursor.execute(
+            """SELECT id FROM draft_audit_findings
+               WHERE module_name = ?
+                 AND COALESCE(engagement_id, -1) = COALESCE(?, -1)
+                 AND finding_hash = ?
+                 AND draft_status IN ('Draft', 'Confirmed')
+               LIMIT 1
+            """,
+            (module_name, engagement_id, finding_hash),
+        ).fetchone()
+        if existing:
+            continue
 
         cursor.execute("""
             INSERT INTO draft_audit_findings (
@@ -542,7 +558,7 @@ def stage_findings(findings_df: pd.DataFrame, module_name: str, run_id: str = No
         """, (
             run_id, module_name, engagement_id, entity_id,
             row.get("company_code", "HQ"), row.get("plant_code", ""),
-            row.get("area", ""), row.get("checklist_ref", ""), row.get("finding", ""),
+            area_value, row.get("checklist_ref", ""), finding_value,
             row.get("amount_at_risk", 0), row.get("vendor_name", ""), row.get("finding_date", ""),
             row.get("period", period), row.get("risk_band", "MEDIUM"), "Draft",
             ai_explanation, ai_citations, row.get("source_row_ref", ""),

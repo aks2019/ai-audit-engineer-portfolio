@@ -8,7 +8,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from utils.rag_engine import generate_rag_audit_report
+from utils.audit_db import init_audit_db
+from utils.base_audit_check import BaseAuditCheck
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "dab"
 
 # === SESSION STATE INITIALIZATION ===
 if "df" not in st.session_state:
@@ -17,6 +21,7 @@ if "audit_results" not in st.session_state:
     st.session_state.audit_results = None
 
 st.title("🛠️ Dynamic Audit Builder")
+render_engagement_selector(PAGE_KEY)
 st.markdown("**No-Code SAP Auditor: Map any column to any audit rule instantly.**")
 
 # 1. DATA UPLOAD SECTION
@@ -130,6 +135,21 @@ if st.session_state.df is not None:
 
                 # --- OUTPUT GENERATION ---
                 if not anomalies.empty:
+                    # Stage findings for draft review
+                    run_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                    init_audit_db()
+                    from utils.audit_db import stage_findings as _stage_findings
+                    _staged = _stage_findings(
+                        anomalies,
+                        module_name="Dynamic Audit Builder",
+                        run_id=run_id,
+                        period=datetime.utcnow().strftime("%Y-%m"),
+                        source_file_name=getattr(uploaded_file, "name", "manual"),
+                        engagement_id=get_active_engagement_id(PAGE_KEY),
+                    )
+                    st.info(f"📋 {_staged} finding(s) staged for your review.")
+                    st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
+                    
                     st.session_state.audit_results = {"type": audit_type, "df": anomalies}
                     st.success(f"🔍 Audit Complete! Found {len(anomalies)} potential issues.")
                 else:
@@ -200,6 +220,7 @@ if st.session_state.df is not None:
                     button_label = "🔍 Run AI Policy Check on Selected Row" if num_selected == 1 else "🔍 Run AI Policy Check on Selected Transactions"
                     if st.button(button_label, type="primary"):
                         with st.spinner("Consulting policy documents..."):
+                            from utils.rag_engine import generate_rag_audit_report
                             result = generate_rag_audit_report(
                                 flagged_transactions=selected_rows_list, 
                                 vendor_name=display_vendor

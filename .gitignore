@@ -36,6 +36,8 @@ processed/
 *.log
 logs/
 temp/
+.pytest_cache/
+pytest-cache-files-*/
 
 # IDE / Cursor / VS Code files
 .vscode/

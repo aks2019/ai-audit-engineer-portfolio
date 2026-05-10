@@ -11,8 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
 from utils.base_audit_check import BaseAuditCheck
 from utils.compliance_loader import get_industry_profile
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "rec"
 
 st.title("💰 Customer Receivables & Bad Debt Detector")
+render_engagement_selector(PAGE_KEY)
 st.caption("Depot 5 / SAP HO 15 | SAP: FBL5N / S_ALR_87012197")
 
 uploaded = st.file_uploader("Upload Customer Outstanding (CSV/Excel)", type=["csv","xlsx"])
@@ -92,10 +96,11 @@ if uploaded:
             module_name="Receivables Bad Debt",
             run_id=run_id,
             period=datetime.utcnow().strftime("%Y-%m"),
-            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+            source_file_name=getattr(uploaded, "name", "manual"),
+            engagement_id=get_active_engagement_id(PAGE_KEY),
         )
         st.info(f"📋 {_staged} exception(s) staged for your review.")
-        st.session_state.draft_run_id = run_id
+        st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
         st.caption(f"📝 {len(log_df)} findings logged to audit.db")
 
 

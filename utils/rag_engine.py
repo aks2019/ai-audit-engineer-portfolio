@@ -6,7 +6,6 @@ import os
 import hashlib
 from pathlib import Path
 from langchain_postgres import PGVector
-from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage
@@ -19,11 +18,39 @@ from langchain_core.documents import Document
 from utils.redis_cache import cache_rag_result
 load_dotenv()
 
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+_embeddings = None
+_embeddings_error = None
+
+
+def _get_embeddings():
+    """Lazy-init embeddings to avoid app startup delay/network errors."""
+    global _embeddings
+    global _embeddings_error
+    if _embeddings_error is not None:
+        raise RuntimeError(_embeddings_error)
+    if _embeddings is None:
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+            # Default local-only avoids external SSL/download retry loops.
+            # Set HF_LOCAL_FILES_ONLY=false if internet + cert chain is configured.
+            local_only = os.getenv("HF_LOCAL_FILES_ONLY", "true").lower() == "true"
+            _embeddings = HuggingFaceEmbeddings(
+                model_name="all-MiniLM-L6-v2",
+                model_kwargs={"local_files_only": local_only},
+            )
+        except Exception as e:
+            _embeddings_error = (
+                "HuggingFace embeddings unavailable. "
+                "Set HF_LOCAL_FILES_ONLY=false with internet/cert access, "
+                "or pre-download the model locally. "
+                f"Original error: {e}"
+            )
+            raise RuntimeError(_embeddings_error) from e
+    return _embeddings
 
 def get_vectorstore():
     return PGVector(
-        embeddings=embeddings,
+        embeddings=_get_embeddings(),
         collection_name="audit_policies",
         connection=os.getenv("NEON_CONNECTION_STRING"),
         use_jsonb=True

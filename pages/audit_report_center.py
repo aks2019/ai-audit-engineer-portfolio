@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 from datetime import datetime
 import sys
 from pathlib import Path
@@ -11,6 +12,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import load_findings, init_audit_db
 from utils.rag_engine import _get_llm, get_free_form_chain
 
+
+def _unique_excel_sheet_name(area: object, used: set[str]) -> str:
+    """Build a non-empty, Excel-legal, unique sheet title (max 31 chars)."""
+    if pd.isna(area):
+        base = "Unnamed"
+    else:
+        t = str(area).strip()
+        base = t if t else "Unnamed"
+    safe = re.sub(r"[\[\]:*?/\\]", "_", base)
+    safe = (safe[:31]).strip() or "Unnamed"
+    name = safe
+    n = 2
+    while name in used:
+        suffix = f"_{n}"
+        max_base = max(0, 31 - len(suffix))
+        name = (safe[:max_base] + suffix) if max_base else f"Sheet{n}"[:31]
+        n += 1
+    used.add(name)
+    return name
+
+
 st.title("📑 Audit Report Center + MIS Audit Report")
 st.caption("Centralized reports | CFO-ready MIS | LLM synthesis")
 
@@ -20,11 +42,29 @@ with tab1:
     init_audit_db()
     findings = load_findings()
     if findings.empty:
-        st.info("No findings yet.")
+        st.info("No findings yet. Run detection on any page and confirm findings to see them here.")
     else:
         st.subheader("Centralized Findings Timeline")
-        timeline = findings.groupby(["area","finding_date"]).size().reset_index(name="count")
-        st.dataframe(timeline, use_container_width=True, hide_index=True)
+        
+        # Handle missing/null finding_date gracefully
+        if "finding_date" not in findings.columns:
+            st.warning("finding_date column not found in audit_findings table.")
+        else:
+            # Filter out rows with null/empty finding_date
+            valid_findings = findings[findings["finding_date"].notna() & (findings["finding_date"] != "")]
+            
+            if valid_findings.empty:
+                st.info("No findings with valid dates found.")
+            else:
+                timeline = valid_findings.groupby(["area","finding_date"]).size().reset_index(name="count")
+                timeline = timeline.sort_values("finding_date", ascending=False)
+                st.dataframe(timeline, use_container_width=True, hide_index=True)
+                
+                # Show summary metrics
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Total Confirmed Findings", len(valid_findings))
+                col2.metric("Unique Areas", valid_findings["area"].nunique())
+                col3.metric("Date Range", f"{valid_findings['finding_date'].min()} to {valid_findings['finding_date'].max()}" if len(valid_findings) > 0 else "N/A")
 
         if st.button("🤖 Synthesize Combined Executive Summary"):
             with st.spinner("LLM drafting..."):
@@ -35,9 +75,15 @@ with tab1:
 
         # Excel download
         buf = BytesIO()
+        used_sheet_names: set[str] = set()
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             for area in findings["area"].unique():
-                findings[findings["area"]==area].to_excel(writer, sheet_name=area[:31], index=False)
+                sheet = _unique_excel_sheet_name(area, used_sheet_names)
+                if pd.isna(area):
+                    rows = findings[findings["area"].isna()]
+                else:
+                    rows = findings[findings["area"] == area]
+                rows.to_excel(writer, sheet_name=sheet, index=False)
         st.download_button("📥 Download Excel Workbook", buf.getvalue(), "audit_reports.xlsx",
                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 

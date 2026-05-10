@@ -10,8 +10,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
 from utils.base_audit_check import BaseAuditCheck
 from utils.compliance_loader import get_depreciation_rate, load_compliance_calendar
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "fa"
 
 st.title("🏭 Fixed Asset Addition & Depreciation Auditor")
+render_engagement_selector(PAGE_KEY)
 st.caption("Fixed Assets A.1–A.13, B.1–B.41 | SAP: AS03 / AFAB")
 
 uploaded = st.file_uploader("Upload Asset Register (CSV/Excel)", type=["csv","xlsx"])
@@ -92,17 +96,18 @@ if uploaded:
             module_name="Fixed Asset Auditor",
             run_id=run_id,
             period=datetime.utcnow().strftime("%Y-%m"),
-            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+            source_file_name=getattr(uploaded, "name", "manual"),
+            engagement_id=get_active_engagement_id(PAGE_KEY),
         )
         st.info(f"📋 {_staged} exception(s) staged for your review.")
-        st.session_state.draft_run_id = run_id
+        st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
         st.caption(f"📝 Findings logged")
 
 
 # --- AI Audit Report (RAG) ---
 try:
     from utils.audit_page_helpers import render_rag_report_section
-    flagged_rag_df = anomalies if 'anomalies' in locals() and anomalies is not None and not anomalies.empty else None
+    flagged_rag_df = top_ae if 'top_ae' in locals() and top_ae is not None and not top_ae.empty else None
     if flagged_rag_df is not None:
         render_rag_report_section(
             "fa",

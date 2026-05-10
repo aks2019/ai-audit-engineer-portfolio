@@ -7,6 +7,7 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from checks.financial_statement import generate_fs_review_report
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
 try:
     from utils.rag_engine import generate_financial_audit_report
@@ -14,6 +15,9 @@ except ImportError:
     generate_financial_audit_report = None
 
 st.set_page_config(page_title="Financial Statement Auditor", page_icon="📊", layout="wide")
+
+PAGE_KEY = "fs"
+render_engagement_selector(PAGE_KEY)
 
 st.title("📊 SAP Financial Statement Auditor")
 st.caption("Deterministic Checks First → AI Explanation | Ind AS/AS/CARO/Schedule III Compliant")
@@ -104,6 +108,37 @@ if uploaded_tb:
                 st.session_state["fs_deterministic_report"] = report
                 st.session_state["fs_deterministic_done"] = True
                 st.session_state["fs_ai_explanation"] = None
+                
+                # Stage findings for draft review
+                run_id = datetime.now().strftime("%Y%m%d%H%M%S")
+                from utils.audit_db import init_audit_db, stage_findings
+                init_audit_db()
+                # Convert issues to DataFrame for staging
+                findings_list = []
+                for check_name, result in report.get("checks", {}).items():
+                    for issue in result.get("issues", []):
+                        findings_list.append({
+                            "check": check_name,
+                            "severity": issue.get("severity", "MEDIUM"),
+                            "description": issue.get("description", str(issue)),
+                            "account": issue.get("account", ""),
+                            "amount": issue.get("amount", 0),
+                        })
+                if findings_list:
+                    findings_df = pd.DataFrame(findings_list)
+                    from utils.audit_page_helpers import get_active_engagement_id
+                    _staged = stage_findings(
+                        findings_df,
+                        module_name="Financial Statement Auditor",
+                        run_id=run_id,
+                        period=datetime.now().strftime("%Y-%m"),
+                        source_file_name=getattr(uploaded_tb, "name", "manual"),
+                        engagement_id=get_active_engagement_id(PAGE_KEY),
+                    )
+                    st.info(f"📋 {_staged} finding(s) staged for your review.")
+                    st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
+                    # Store findings for RAG report section
+                    st.session_state["fs_findings_list"] = findings_list
 
         # ── STEP 3: DISPLAY DETERMINISTIC RESULTS ─────────────────
         if st.session_state["fs_deterministic_done"]:
@@ -235,3 +270,30 @@ else:
 
 st.divider()
 st.caption("**Financial Statement Auditor** | Deterministic Checks First → AI Explanation | Ind AS/AS/CARO/Schedule III")
+
+# --- AI Audit Report (RAG) ---
+try:
+    from utils.audit_page_helpers import render_rag_report_section
+    # Access findings_list from session state (set during run_det block)
+    fs_findings = st.session_state.get("fs_findings_list", [])
+    if st.session_state.get("fs_deterministic_done") and fs_findings:
+        findings_rag_df = pd.DataFrame(fs_findings)
+        if not findings_rag_df.empty:
+            render_rag_report_section(
+                PAGE_KEY,
+                flagged_df=findings_rag_df,
+                module_name="Financial Statement Auditor"
+            )
+        else:
+            st.caption("ℹ️ No findings for RAG report.")
+    else:
+        st.caption("ℹ️ Run deterministic checks first to enable RAG audit report.")
+except Exception as _e:
+    st.caption(f"RAG report unavailable: {_e}")
+
+# --- Draft Review ---
+try:
+    from utils.audit_page_helpers import render_draft_review_section
+    render_draft_review_section(PAGE_KEY, "Financial Statement Auditor")
+except Exception as _e:
+    st.caption(f"Draft review unavailable: {_e}")

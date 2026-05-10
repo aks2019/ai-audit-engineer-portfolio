@@ -10,12 +10,13 @@ from pathlib import Path
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
-from utils.redis_cache import save_session_to_redis, load_session_from_redis
-
 # === FIX IMPORT PATH FOR UTILS FOLDER ===
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.rag_engine import generate_rag_audit_report, get_free_form_chain, build_combined_context
 from utils.redis_cache import save_session_to_redis, load_session_from_redis
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "ano"
 
 # === SESSION STATE (all previous + persistent report) ===
 if "messages" not in st.session_state:
@@ -64,6 +65,7 @@ def _generate_report_pdf(report_text: str) -> BytesIO:
 
 st.title("🚨 AI Vendor Payment Anomaly Detector")
 st.markdown("**100% Population Testing • SAP FICO-MM + Dynamic Contract RAG via Policy Bot**")
+render_engagement_selector(PAGE_KEY)
 
 uploaded_file = st.file_uploader(
     "Upload any vendor payments CSV/Excel (real SAP / Caseware IDEA export)",
@@ -240,7 +242,7 @@ if uploaded_file:
         # Stable run_id per uploaded file — same file always maps to same run
         file_run_id = hashlib.sha256(uploaded_file.getvalue()).hexdigest()[:12]
 
-        if st.session_state.draft_run_id != file_run_id:
+        if st.session_state.get(f"{PAGE_KEY}_draft_run_id") != file_run_id:
             # Stage ALL model-detected anomalies (not just sidebar-filtered subset)
             all_flagged = df[df["anomaly_score"] == 1].copy()
             all_flagged["area"]          = "Vendor Payments"
@@ -264,8 +266,9 @@ if uploaded_file:
                 run_id=file_run_id,
                 period=datetime.utcnow().strftime("%Y-%m"),
                 source_file_name=uploaded_file.name,
+                engagement_id=get_active_engagement_id(PAGE_KEY),
             )
-            st.session_state.draft_run_id = file_run_id
+            st.session_state[f"{PAGE_KEY}_draft_run_id"] = file_run_id
             st.info(
                 f"📋 **{staged} exception(s) staged for your review.** "
                 "Nothing has been added to the official audit trail yet. "
@@ -334,7 +337,7 @@ if uploaded_file:
             load_draft_findings, confirm_draft_findings, discard_draft_findings
         )
 
-        current_run_id = st.session_state.get("draft_run_id")
+        current_run_id = st.session_state.get(f"{PAGE_KEY}_draft_run_id")
         drafts = load_draft_findings(
             run_id=current_run_id,
             module_name="Payment Anomaly Detector",

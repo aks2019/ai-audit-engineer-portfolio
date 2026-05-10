@@ -12,8 +12,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
 from utils.base_audit_check import BaseAuditCheck
 from utils.compliance_loader import get_industry_profile
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
+
+PAGE_KEY = "inv"
 
 st.title("📦 Inventory Valuation & Slow-Moving Stock Detector")
+render_engagement_selector(PAGE_KEY)
 st.caption("Inventory Mgmt A.6–A.11 | SAP: MB52 + MB5M / MC46")
 
 uploaded = st.file_uploader("Upload Inventory Extract (CSV/Excel)", type=["csv","xlsx"])
@@ -85,10 +89,11 @@ if uploaded:
             module_name="Inventory Anomaly",
             run_id=run_id,
             period=datetime.utcnow().strftime("%Y-%m"),
-            source_file_name=getattr(uploaded_file, "name", "manual") if 'uploaded_file' in locals() else "manual",
+            source_file_name=getattr(uploaded, "name", "manual"),
+            engagement_id=get_active_engagement_id(PAGE_KEY),
         )
         st.info(f"📋 {_staged} exception(s) staged for your review.")
-        st.session_state.draft_run_id = run_id
+        st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
         st.caption(f"📝 Findings logged")
 
 
