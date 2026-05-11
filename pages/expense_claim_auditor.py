@@ -7,6 +7,7 @@ from pathlib import Path
 from sklearn.ensemble import IsolationForest
 import hashlib
 import json
+import secrets
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import (
@@ -124,28 +125,26 @@ if uploaded:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
 
     init_audit_db()
-    run_id = f"{analysis_token}:v3"
+    # Bump version so a new run is not treated as the same idempotency window as older builds.
+    run_id = f"{analysis_token}:v5"
 
     frames = []
-    # Mutable counter — nonlocal cannot be used here (_append_staging is not nested in a def scope).
-    _seq_counter = [0]
 
-    def _append_staging(tmp: pd.DataFrame, checklist_ref: str, risk_band: str, finding_fn):
+    def _append_staging(tmp: pd.DataFrame, *, checklist_ref: str, risk_band: str, finding_fn, kind: str):
         if tmp.empty:
             return
-        out = tmp.copy()
+        out = tmp.head(500).copy()
         out["area"] = "Expense Claims"
         out["checklist_ref"] = checklist_ref
-        out["vendor_name"] = out["employee_id"].astype(str).replace({"nan": ""})
+        out["vendor_name"] = (
+            out["employee_id"].map(lambda x: str(x).strip() if pd.notna(x) else "").str.replace(r"\.0$", "", regex=True)
+        )
         out["amount_at_risk"] = pd.to_numeric(out["amount"], errors="coerce").fillna(0).abs().astype(float)
         out["risk_band"] = risk_band
         out["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
         out["period"] = period_str
-        refs = []
-        for _ in range(len(out)):
-            refs.append(f"{PAGE_KEY}-{run_id}-{_seq_counter[0]}")
-            _seq_counter[0] += 1
-        out["source_row_ref"] = refs
+        # Cryptographic row keys — guarantees unique finding_hash vs prior runs / duplicates.
+        out["source_row_ref"] = [f"{PAGE_KEY}-{kind}-{secrets.token_hex(8)}" for _ in range(len(out))]
         out["finding"] = out.apply(finding_fn, axis=1)
         frames.append(
             out[
@@ -172,7 +171,7 @@ if uploaded:
                 f"— employee {r.get('employee_id', '')} (ref: {_row_sig(r)})"
             )
 
-        _append_staging(over, "Payroll Mgmt 7a", "HIGH", _f_over)
+        _append_staging(over, checklist_ref="Payroll Mgmt 7a", risk_band="HIGH", finding_fn=_f_over, kind="over")
 
     if not self_app.empty:
 
@@ -182,7 +181,7 @@ if uploaded:
                 f"(ref: {_row_sig(r)})"
             )
 
-        _append_staging(self_app, "Payroll Mgmt 15", "CRITICAL", _f_self)
+        _append_staging(self_app, checklist_ref="Payroll Mgmt 15", risk_band="CRITICAL", finding_fn=_f_self, kind="sod")
 
     if not high_no_doc.empty:
         max_nd = policy.get("max_claim_without_docs", 500)
@@ -193,7 +192,7 @@ if uploaded:
                 f"(threshold ₹{max_nd}) — employee {r.get('employee_id', '')} (ref: {_row_sig(r)})"
             )
 
-        _append_staging(high_no_doc, "Payroll Mgmt 14", "MEDIUM", _f_nd)
+        _append_staging(high_no_doc, checklist_ref="Payroll Mgmt 14", risk_band="MEDIUM", finding_fn=_f_nd, kind="nodoc")
 
     if not anom.empty:
 
@@ -203,7 +202,7 @@ if uploaded:
                 f"amount ₹{float(r.get('amount', 0)):,.0f} (ref: {_row_sig(r)})"
             )
 
-        _append_staging(anom, "ML Outlier", "HIGH", _f_ml)
+        _append_staging(anom, checklist_ref="ML Outlier", risk_band="HIGH", finding_fn=_f_ml, kind="ml")
 
     staging_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
@@ -225,10 +224,16 @@ if uploaded:
         )
         st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
         st.info(
-            f"📋 **{staged} exception(s) staged for your review.** "
+            f"📋 **{staged} exception(s) staged for your review** (of **{len(staging_df)}** detected). "
             "Nothing has been added to the official audit trail until you confirm below. "
             "**Audit Report Centre / Audit Committee Pack** only include findings after you confirm them."
         )
+        if staged < len(staging_df):
+            st.warning(
+                f"**{len(staging_df) - staged}** row(s) were skipped because an identical draft/confirmed "
+                "finding already exists for this engagement (SQLite dedupe). If you expected a full re-stage, "
+                "confirm or discard older **Expense Claim Auditor** drafts first, then run detection again."
+            )
     elif not staging_df.empty:
         st.caption(f"📋 Exceptions already staged (run: `{run_id}`). Review below.")
     else:

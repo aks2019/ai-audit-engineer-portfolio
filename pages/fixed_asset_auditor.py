@@ -22,6 +22,9 @@ from utils.audit_page_helpers import render_engagement_selector, get_active_enga
 
 PAGE_KEY = "fa"
 
+if f"{PAGE_KEY}_rag_df" not in st.session_state:
+    st.session_state[f"{PAGE_KEY}_rag_df"] = None
+
 st.title("🏭 Fixed Asset Addition & Depreciation Auditor")
 render_engagement_selector(PAGE_KEY)
 st.caption("Fixed Assets A.1–A.13, B.1–B.41 | SAP: AS03 / AFAB")
@@ -69,33 +72,64 @@ if uploaded:
     df["applied_rate"] = pd.to_numeric(df["applied_rate"], errors="coerce").fillna(0)
     cal = load_compliance_calendar()
 
+    period_str = datetime.utcnow().strftime("%Y-%m")
+
     # Revenue vs capital
-    rev_keywords = cal.get("fixed_assets",{}).get("revenue_keywords",[])
-    df["revenue_flag"] = df["asset_description"].astype(str).str.lower().apply(lambda x: any(k in x for k in rev_keywords))
-    rev = df[df["revenue_flag"]]
+    rev_keywords = cal.get("fixed_assets", {}).get("revenue_keywords", [])
+    df["revenue_flag"] = df["asset_description"].astype(str).str.lower().apply(
+        lambda x: any(k in x for k in rev_keywords)
+    )
+    rev = df[df["revenue_flag"]].copy()
+    st.subheader("🚨 Revenue-like keywords — capitalisation review (Fixed Assets A.1)")
     if not rev.empty:
-        st.warning(f"Revenue-like keyword detected in {len(rev)} assets — capitalisation review needed")
-        st.dataframe(rev[["asset_description","cost"]].head(20), use_container_width=True)
+        st.warning(
+            f"Revenue-like keyword detected in **{len(rev)}** asset(s) — capitalisation review needed."
+        )
+        st.dataframe(rev[["asset_description", "cost"]].head(200), use_container_width=True)
+    else:
+        st.success("No revenue-like keyword flags in asset descriptions.")
 
     # Depreciation rate variance
     if asset_class_col != "None":
         df["expected_rate"] = df[asset_class_col].apply(lambda c: get_depreciation_rate(str(c)))
+        df["expected_rate"] = pd.to_numeric(df["expected_rate"], errors="coerce").fillna(0)
         df["rate_variance"] = (df["applied_rate"] - df["expected_rate"]).abs()
-        var = df[df["rate_variance"] > 0.5]
-        if not var.empty:
-            st.warning(f"Depreciation rate variance >0.5%: {len(var)} assets")
-            st.dataframe(var[["asset_description",asset_class_col,"applied_rate","expected_rate"]].head(20), use_container_width=True)
+        var = df[df["rate_variance"] > 0.5].copy()
     else:
         var = pd.DataFrame()
 
+    st.subheader("🚨 Depreciation rate variance — applied vs expected (Fixed Assets A.7)")
+    if not var.empty:
+        st.warning(f"Depreciation rate variance **>0.5%**: **{len(var)}** asset(s).")
+        st.dataframe(
+            var[["asset_description", asset_class_col, "applied_rate", "expected_rate", "rate_variance"]].head(
+                200
+            ),
+            use_container_width=True,
+        )
+    else:
+        st.success("No depreciation rate variance above 0.5% (or asset class not mapped).")
+
     # Unapproved capex
     if approved_col != "None":
-        thresh = cal.get("fixed_assets",{}).get("capex_approval_threshold",100000)
-        unapproved = df[(df[approved_col] != 1) & (df["cost"] > thresh)]
-        if not unapproved.empty:
-            st.error(f"Unapproved capex >₹{thresh:,}: {len(unapproved)} assets (Fixed Assets B.4)")
+        thresh = cal.get("fixed_assets", {}).get("capex_approval_threshold", 100000)
+        appr = pd.to_numeric(df[approved_col], errors="coerce")
+        unapproved = df[(appr.fillna(0) != 1) & (df["cost"] > thresh)].copy()
     else:
         unapproved = pd.DataFrame()
+
+    st.subheader("🚨 Unapproved capex above threshold (Fixed Assets B.4)")
+    if approved_col != "None":
+        thresh = cal.get("fixed_assets", {}).get("capex_approval_threshold", 100000)
+        if not unapproved.empty:
+            st.error(f"Unapproved capex **>₹{thresh:,}**: **{len(unapproved)}** asset(s).")
+            show_cols = ["asset_description", "cost", approved_col]
+            show_cols = [c for c in show_cols if c in unapproved.columns]
+            st.dataframe(unapproved[show_cols].head(200), use_container_width=True)
+        else:
+            st.success(f"No unapproved capex above ₹{thresh:,} for the mapped approval column.")
+    else:
+        st.info("Map **Capex Approved** to flag unapproved high-value additions.")
 
     # Autoencoder anomaly
     num_cols = ["cost","accumulated_depreciation","applied_rate"]
@@ -115,7 +149,7 @@ if uploaded:
 
     # Stage only true detected exceptions for maker-checker flow
     init_audit_db()
-    run_id = f"{analysis_token}:v2"
+    run_id = f"{analysis_token}:v3"
 
     def _row_sig(row: pd.Series) -> str:
         try:
@@ -124,84 +158,108 @@ if uploaded:
             raw = str(row.to_dict())
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
 
+    _STAGING_COLS = [
+        "area",
+        "checklist_ref",
+        "finding",
+        "amount_at_risk",
+        "vendor_name",
+        "risk_band",
+        "finding_date",
+        "period",
+        "source_row_ref",
+    ]
+    _ref_seq = [0]
+
+    def _next_source_ref(kind: str) -> str:
+        _ref_seq[0] += 1
+        return f"{PAGE_KEY}-fa-{kind}-{_ref_seq[0]}"
+
     frames = []
 
+    def _append_staging_block(tmp: pd.DataFrame, kind: str, risk_band: str, checklist_ref: str, finding_fn):
+        if tmp.empty:
+            return
+        out = tmp.head(500).copy()
+        out["area"] = "Fixed Assets"
+        out["checklist_ref"] = checklist_ref
+        out["vendor_name"] = out["asset_description"].astype(str).str.slice(0, 500)
+        out["amount_at_risk"] = pd.to_numeric(out["cost"], errors="coerce").fillna(0).abs().astype(float)
+        out["risk_band"] = risk_band
+        out["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
+        out["period"] = period_str
+        out["source_row_ref"] = [_next_source_ref(kind) for _ in range(len(out))]
+        out["finding"] = out.apply(finding_fn, axis=1)
+        frames.append(out[_STAGING_COLS])
+
     if not rev.empty:
-        tmp = rev.copy()
-        tmp["area"] = "Fixed Assets"
-        tmp["checklist_ref"] = "Fixed Assets A.1 (capital vs revenue)"
-        tmp["vendor_name"] = tmp["asset_description"].astype(str)
-        tmp["amount_at_risk"] = tmp["cost"].abs()
-        tmp["risk_band"] = "MEDIUM"
-        tmp["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
-        tmp["finding"] = tmp.apply(
-            lambda r: f"Revenue-like keyword in asset description — '{r.get('asset_description','')}' cost ₹{r.get('cost',0):,.0f}"
-            + f" (ref: {_row_sig(r)})",
-            axis=1,
-        )
-        frames.append(tmp[["area","checklist_ref","finding","amount_at_risk","vendor_name","risk_band","finding_date"]])
+
+        def _f_rev(r):
+            return (
+                f"Revenue-like keyword in asset description — '{r.get('asset_description', '')}' "
+                f"cost ₹{float(r.get('cost', 0) or 0):,.0f} (ref: {_row_sig(r)})"
+            )
+
+        _append_staging_block(rev, "rev", "MEDIUM", "Fixed Assets A.1 (capital vs revenue)", _f_rev)
 
     if not var.empty:
-        tmp = var.copy()
-        tmp["area"] = "Fixed Assets"
-        tmp["checklist_ref"] = "Fixed Assets A.7 (rate variance)"
-        tmp["vendor_name"] = tmp["asset_description"].astype(str)
-        tmp["amount_at_risk"] = tmp["cost"].abs()
-        tmp["risk_band"] = "MEDIUM"
-        tmp["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
-        tmp["finding"] = tmp.apply(
-            lambda r: f"Depreciation rate variance {r.get('rate_variance',0):.2f}% — applied {r.get('applied_rate',0)} vs expected {r.get('expected_rate',0)}"
-            + f" (ref: {_row_sig(r)})",
-            axis=1,
-        )
-        frames.append(tmp[["area","checklist_ref","finding","amount_at_risk","vendor_name","risk_band","finding_date"]])
+
+        def _f_var(r):
+            return (
+                f"Depreciation rate variance {float(r.get('rate_variance', 0) or 0):.2f}% — "
+                f"applied {float(r.get('applied_rate', 0) or 0):.2f}% vs expected {float(r.get('expected_rate', 0) or 0):.2f}% "
+                f"(ref: {_row_sig(r)})"
+            )
+
+        _append_staging_block(var, "var", "MEDIUM", "Fixed Assets A.7 (rate variance)", _f_var)
 
     if not unapproved.empty:
-        tmp = unapproved.copy()
-        tmp["area"] = "Fixed Assets"
-        tmp["checklist_ref"] = "Fixed Assets B.4 (capex approval)"
-        tmp["vendor_name"] = tmp["asset_description"].astype(str)
-        tmp["amount_at_risk"] = tmp["cost"].abs()
-        tmp["risk_band"] = "HIGH"
-        tmp["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
-        tmp["finding"] = tmp.apply(
-            lambda r: f"Unapproved capex above threshold — '{r.get('asset_description','')}' cost ₹{r.get('cost',0):,.0f}"
-            + f" (ref: {_row_sig(r)})",
-            axis=1,
-        )
-        frames.append(tmp[["area","checklist_ref","finding","amount_at_risk","vendor_name","risk_band","finding_date"]])
+
+        def _f_un(r):
+            return (
+                f"Unapproved capex above threshold — '{r.get('asset_description', '')}' "
+                f"cost ₹{float(r.get('cost', 0) or 0):,.0f} (ref: {_row_sig(r)})"
+            )
+
+        _append_staging_block(unapproved, "capex", "HIGH", "Fixed Assets B.4 (capex approval)", _f_un)
 
     if not top_ae.empty:
-        tmp = top_ae.copy()
-        tmp["area"] = "Fixed Assets"
-        tmp["checklist_ref"] = "ML Outlier (autoencoder)"
-        tmp["vendor_name"] = tmp["asset_description"].astype(str)
-        tmp["amount_at_risk"] = tmp["cost"].abs() if "cost" in tmp.columns else 0.0
-        tmp["risk_band"] = "HIGH"
-        tmp["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
-        tmp["finding"] = tmp.apply(
-            lambda r: f"Autoencoder anomaly (mse={r.get('autoencoder_mse',0):.4f}) — '{r.get('asset_description','')}'"
-            + f" (ref: {_row_sig(r)})",
-            axis=1,
-        )
-        frames.append(tmp[["area","checklist_ref","finding","amount_at_risk","vendor_name","risk_band","finding_date"]])
+
+        def _f_ae(r):
+            return (
+                f"Autoencoder anomaly (mse={float(r.get('autoencoder_mse', 0) or 0):.4f}) — "
+                f"'{r.get('asset_description', '')}' (ref: {_row_sig(r)})"
+            )
+
+        _append_staging_block(top_ae, "ae", "HIGH", "ML Outlier (autoencoder)", _f_ae)
 
     staging_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    rag_parts = [x for x in [rev, var, unapproved, top_ae] if x is not None and not x.empty]
+    if rag_parts:
+        st.session_state[f"{PAGE_KEY}_rag_df"] = pd.concat(rag_parts, ignore_index=True).head(300)
+    else:
+        st.session_state[f"{PAGE_KEY}_rag_df"] = None
 
     if not staging_df.empty and st.session_state.get(f"{PAGE_KEY}_draft_run_id") != run_id:
         staged = stage_findings(
             staging_df,
             module_name="Fixed Asset Auditor",
             run_id=run_id,
-            period=datetime.utcnow().strftime("%Y-%m"),
+            period=period_str,
             source_file_name=getattr(uploaded, "name", "manual"),
             engagement_id=get_active_engagement_id(PAGE_KEY),
         )
         st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
         st.info(
-            f"📋 **{staged} exception(s) staged for your review.** "
-            "Nothing has been added to the official audit trail yet."
+            f"📋 **{staged} exception(s) staged for your review** (of **{len(staging_df)}** detected). "
+            "Nothing has been added to the official audit trail until you confirm below."
         )
+        if staged < len(staging_df):
+            st.warning(
+                f"**{len(staging_df) - staged}** row(s) were skipped as duplicates already in draft/confirmed "
+                "for this engagement (same finding hash). Clear or confirm old drafts if you need a full re-stage."
+            )
     elif not staging_df.empty:
         st.caption(f"📋 Exceptions already staged (run: `{run_id}`). Review below.")
     else:
@@ -211,8 +269,9 @@ if uploaded:
 # --- AI Audit Report (RAG) ---
 try:
     from utils.audit_page_helpers import render_rag_report_section
-    flagged_rag_df = top_ae if 'top_ae' in locals() and top_ae is not None and not top_ae.empty else None
-    if flagged_rag_df is not None:
+
+    flagged_rag_df = st.session_state.get(f"{PAGE_KEY}_rag_df")
+    if flagged_rag_df is not None and not flagged_rag_df.empty:
         render_rag_report_section(
             "fa",
             flagged_df=flagged_rag_df,
