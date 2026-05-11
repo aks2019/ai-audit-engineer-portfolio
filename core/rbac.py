@@ -5,11 +5,32 @@ import pandas as pd
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 import hashlib
+import os
+import secrets
 
 
 def get_db_path() -> str:
     Path("data").mkdir(exist_ok=True)
     return "data/audit.db"
+
+
+def hash_password(password: str) -> str:
+    """Hash password using per-password salt (salt:sha256)."""
+    salt = secrets.token_hex(16)
+    digest = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+    return f"{salt}:{digest}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify password against stored salt:sha256 hash."""
+    if not password_hash:
+        return False
+    try:
+        salt, digest = password_hash.split(":", 1)
+    except ValueError:
+        return False
+    candidate = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+    return candidate == digest
 
 
 def init_rbac_tables():
@@ -27,9 +48,15 @@ def init_rbac_tables():
             role TEXT DEFAULT 'viewer',
             status TEXT DEFAULT 'Active',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            last_login TEXT
+            last_login TEXT,
+            password_hash TEXT
         )
     """)
+
+    # Backfill/upgrade existing DBs that predate `password_hash`.
+    cols = [row[1] for row in cursor.execute("PRAGMA table_info(audit_users)").fetchall()]
+    if "password_hash" not in cols:
+        cursor.execute("ALTER TABLE audit_users ADD COLUMN password_hash TEXT")
 
     # Role permissions
     cursor.execute("""
@@ -404,9 +431,6 @@ def setup_default_users():
 
     # Check if users exist
     existing = cursor.execute("SELECT COUNT(*) FROM audit_users").fetchone()[0]
-    if existing > 0:
-        conn.close()
-        return
 
     # Create default users
     default_users = [
@@ -416,11 +440,32 @@ def setup_default_users():
         ("viewer", "Read Only User", "viewer@audit.local", "viewer")
     ]
 
-    for username, display_name, email, role in default_users:
-        cursor.execute("""
-            INSERT INTO audit_users (username, display_name, email, role)
-            VALUES (?, ?, ?, ?)
-        """, (username, display_name, email, role))
+    default_password = os.getenv("AUDIT_DEFAULT_PASSWORD")
+
+    if existing == 0:
+        for username, display_name, email, role in default_users:
+            pw_plain = default_password if default_password is not None else username
+            pw_hash = hash_password(pw_plain)
+
+            cursor.execute("""
+                INSERT INTO audit_users (username, display_name, email, role, password_hash)
+                VALUES (?, ?, ?, ?, ?)
+            """, (username, display_name, email, role, pw_hash))
+        conn.commit()
+
+    # Backfill password hashes for pre-existing rows that were created before this upgrade.
+    for username, _, _, _ in default_users:
+        pw_plain = default_password if default_password is not None else username
+        pw_hash = hash_password(pw_plain)
+        cursor.execute(
+            """
+            UPDATE audit_users
+            SET password_hash = ?
+            WHERE username = ?
+              AND (password_hash IS NULL OR password_hash = '')
+            """,
+            (pw_hash, username),
+        )
 
     conn.commit()
     conn.close()

@@ -12,6 +12,9 @@ from io import BytesIO
 import io as io_module
 import tempfile
 from utils.redis_cache import save_session_to_redis, load_session_from_redis
+
+# This page is the canonical “main” Policy RAG experience integrated with the audit platform codebase.
+# The separate `AI-RAG-BOT/` folder is a legacy/local sandbox with its own vector store and runtime assumptions.
 st.title("📋 AI Policy RAG Bot")
 st.caption("Continuous Control Monitoring + Policy Compliance Agent | 100% Audit Trail | Built by Ashok Sharma")
 

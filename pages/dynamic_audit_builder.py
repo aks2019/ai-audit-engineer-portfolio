@@ -6,9 +6,17 @@ from sklearn.ensemble import IsolationForest
 from datetime import datetime
 import sys
 from pathlib import Path
+import hashlib
+import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from utils.audit_db import init_audit_db
+from utils.audit_db import (
+    init_audit_db,
+    stage_findings,
+    load_draft_findings,
+    confirm_draft_findings,
+    discard_draft_findings,
+)
 from utils.base_audit_check import BaseAuditCheck
 from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
@@ -19,6 +27,8 @@ if "df" not in st.session_state:
     st.session_state.df = None
 if "audit_results" not in st.session_state:
     st.session_state.audit_results = None
+if f"{PAGE_KEY}_draft_run_id" not in st.session_state:
+    st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
 
 st.title("🛠️ Dynamic Audit Builder")
 render_engagement_selector(PAGE_KEY)
@@ -89,7 +99,7 @@ if st.session_state.df is not None:
         mapping["features"] = st.multiselect("Features for ML", options=df.select_dtypes(include=[np.number]).columns)
 
     # 4. EXECUTION ENGINE
-    if st.button("🚀 Run Dynamic Audit", type="primary"):
+    if st.button("▶️ Run Detection", type="primary"):
         st.divider()
         with st.spinner("Executing audit logic..."):
             try:
@@ -134,27 +144,87 @@ if st.session_state.df is not None:
                         st.error("Please select at least 2 numeric features for ML.")
 
                 # --- OUTPUT GENERATION ---
-                if not anomalies.empty:
-                    # Stage findings for draft review
-                    run_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-                    init_audit_db()
-                    from utils.audit_db import stage_findings as _stage_findings
-                    _staged = _stage_findings(
-                        anomalies,
-                        module_name="Dynamic Audit Builder",
-                        run_id=run_id,
-                        period=datetime.utcnow().strftime("%Y-%m"),
-                        source_file_name=getattr(uploaded_file, "name", "manual"),
-                        engagement_id=get_active_engagement_id(PAGE_KEY),
-                    )
-                    st.info(f"📋 {_staged} finding(s) staged for your review.")
-                    st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
-                    
-                    st.session_state.audit_results = {"type": audit_type, "df": anomalies}
-                    st.success(f"🔍 Audit Complete! Found {len(anomalies)} potential issues.")
-                else:
-                    st.session_state.audit_results = {"type": audit_type, "df": pd.DataFrame()}
+                st.session_state.audit_results = {"type": audit_type, "df": anomalies}
+                if anomalies.empty:
                     st.success("✅ No anomalies detected based on current mapping.")
+                else:
+                    st.success(f"🔍 Audit Complete! Found {len(anomalies)} potential issue(s).")
+
+                    # Stage findings for draft review (Maker-Checker)
+                    init_audit_db()
+                    file_sig = hashlib.sha256(uploaded_file.getvalue()).hexdigest()[:12] if uploaded_file else "manual"
+                    mapping_sig = hashlib.sha256(
+                        str({"audit_type": audit_type, "mapping": mapping}).encode("utf-8")
+                    ).hexdigest()[:12]
+                    # bump version to avoid previous dedupe artifacts
+                    run_id = f"{file_sig}:{mapping_sig}:v2"
+
+                    staging_df = anomalies.copy()
+                    staging_df["area"] = "Dynamic Audit Builder"
+                    staging_df["checklist_ref"] = audit_type
+                    staging_df["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
+
+                    # Heuristic amount-at-risk + risk band if a numeric column exists
+                    amount_col_guess = None
+                    for c in staging_df.columns:
+                        if c.lower() in {"amount", "amt", "value", "contract_value", "invoice_amount"}:
+                            amount_col_guess = c
+                            break
+                    if amount_col_guess and pd.api.types.is_numeric_dtype(staging_df[amount_col_guess]):
+                        staging_df["amount_at_risk"] = pd.to_numeric(staging_df[amount_col_guess], errors="coerce").fillna(0).abs()
+                    else:
+                        staging_df["amount_at_risk"] = 0.0
+                    staging_df["risk_band"] = "HIGH" if len(staging_df) >= 10 else "MEDIUM"
+
+                    # Human-readable finding text
+                    def _first_nonempty(row: pd.Series, keys: list[str]) -> str:
+                        for k in keys:
+                            if k in row and pd.notna(row[k]) and str(row[k]).strip():
+                                return str(row[k])
+                        return "Unknown"
+
+                    staging_df["vendor_name"] = staging_df.apply(
+                        lambda r: _first_nonempty(r, ["vendor_name", "vendor", "supplier", "party", "name"]),
+                        axis=1,
+                    )
+
+                    def _row_signature(row: pd.Series) -> str:
+                        # Use a short stable signature so `finding` stays unique per row.
+                        try:
+                            payload = {k: row.get(k) for k in list(row.index)[:25]}
+                            raw = json.dumps(payload, default=str, sort_keys=True)
+                        except Exception:
+                            raw = str(row.to_dict())
+                        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+
+                    staging_df["finding"] = staging_df.apply(
+                        lambda r: (
+                            f"[{audit_type}] Flagged row — entity: {r.get('vendor_name', 'Unknown')} "
+                            f"(ref: {_row_signature(r)})"
+                        ),
+                        axis=1,
+                    )
+
+                    staging_df = staging_df[
+                        ["area", "checklist_ref", "finding", "amount_at_risk", "vendor_name", "risk_band", "finding_date"]
+                    ].copy()
+
+                    if st.session_state.get(f"{PAGE_KEY}_draft_run_id") != run_id:
+                        staged = stage_findings(
+                            staging_df,
+                            module_name="Dynamic Audit Builder",
+                            run_id=run_id,
+                            period=datetime.utcnow().strftime("%Y-%m"),
+                            source_file_name=getattr(uploaded_file, "name", "manual"),
+                            engagement_id=get_active_engagement_id(PAGE_KEY),
+                        )
+                        st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
+                        st.info(
+                            f"📋 **{staged} exception(s) staged for your review.** "
+                            "Nothing has been added to the official audit trail yet."
+                        )
+                    else:
+                        st.caption(f"📋 Exceptions already staged (run: `{run_id}`). Review below.")
 
             except Exception as e:
                 st.error(f"Audit Execution Error: {e}")
@@ -280,7 +350,11 @@ if st.session_state.df is not None:
 # --- AI Audit Report (RAG) ---
 try:
     from utils.audit_page_helpers import render_rag_report_section
-    flagged_rag_df = anomalies if 'anomalies' in locals() and anomalies is not None and not anomalies.empty else None
+    flagged_rag_df = None
+    if st.session_state.get("audit_results") and isinstance(st.session_state.audit_results, dict):
+        _df = st.session_state.audit_results.get("df")
+        if _df is not None and hasattr(_df, "empty") and not _df.empty:
+            flagged_rag_df = _df
     if flagged_rag_df is not None:
         render_rag_report_section(
             "dab",
@@ -294,9 +368,110 @@ except Exception as _e:
 
 
 
-# --- Draft Review ---
-try:
-    from utils.audit_page_helpers import render_draft_review_section
-    render_draft_review_section("dab", "Dynamic Audit Builder")
-except Exception as _e:
-    st.caption(f"Draft review unavailable: {_e}")
+# --- Draft Review (Maker-Checker) ---
+current_run_id = st.session_state.get(f"{PAGE_KEY}_draft_run_id")
+if current_run_id:
+    st.divider()
+    st.subheader("Review & Confirm Findings")
+    st.caption("Use the Select column in the table to confirm/discard. No separate selector is required.")
+
+    drafts = load_draft_findings(
+        run_id=current_run_id,
+        module_name="Dynamic Audit Builder",
+        status="Draft",
+        engagement_id=get_active_engagement_id(PAGE_KEY),
+    )
+    if drafts.empty:
+        st.info("No draft exceptions pending for the current run.")
+    else:
+        select_all = st.checkbox(
+            "Select all draft exceptions",
+            value=False,
+            key=f"{PAGE_KEY}_select_all_drafts",
+        )
+        st.caption(f"**{len(drafts)} draft exception(s)** pending review.")
+        review_df = drafts[["id", "area", "vendor_name", "finding", "amount_at_risk", "risk_band"]].copy()
+        review_df.insert(0, "select", select_all)
+
+        edited = st.data_editor(
+            review_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "select": st.column_config.CheckboxColumn("Select"),
+                "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
+                "area": st.column_config.TextColumn("Area", disabled=True),
+                "vendor_name": st.column_config.TextColumn("Vendor", disabled=True),
+                "finding": st.column_config.TextColumn("Finding (editable)", width="large"),
+                "amount_at_risk": st.column_config.NumberColumn("Amount at Risk", format="%.0f"),
+                "risk_band": st.column_config.SelectboxColumn(
+                    "Risk Band",
+                    options=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                ),
+            },
+            key=f"{PAGE_KEY}_draft_editor_inline_select",
+        )
+
+        selected_ids = edited.loc[edited["select"] == True, "id"].astype(int).tolist()
+        confirmed_by = st.text_input(
+            "Confirmed / Reviewed by (auditor name)",
+            value="Auditor",
+            key=f"{PAGE_KEY}_confirmed_by",
+        )
+
+        c_confirm, c_discard = st.columns(2)
+        with c_confirm:
+            if st.button(
+                "Confirm Selected to Official Audit Trail",
+                type="primary",
+                use_container_width=True,
+                key=f"{PAGE_KEY}_confirm_btn",
+            ):
+                if not selected_ids:
+                    st.warning("Select at least one exception in the table.")
+                else:
+                    edited_vals = {
+                        int(row["id"]): {
+                            "finding": row.get("finding", ""),
+                            "amount_at_risk": row.get("amount_at_risk", 0),
+                            "risk_band": row.get("risk_band", "MEDIUM"),
+                        }
+                        for _, row in edited.iterrows()
+                    }
+                    n = confirm_draft_findings(
+                        selected_ids,
+                        confirmed_by=confirmed_by.strip() or "Auditor",
+                        edited_values=edited_vals,
+                    )
+                    st.success(f"**{n} finding(s) confirmed** and added to the official audit trail.")
+                    st.rerun()
+
+        with c_discard:
+            discard_reason = st.text_input(
+                "Discard reason (optional)",
+                key=f"{PAGE_KEY}_discard_reason",
+            )
+            if st.button(
+                "Discard Selected (False Positives)",
+                use_container_width=True,
+                key=f"{PAGE_KEY}_discard_btn",
+            ):
+                if not selected_ids:
+                    st.warning("Select at least one exception in the table.")
+                else:
+                    n = discard_draft_findings(
+                        selected_ids,
+                        discarded_by=confirmed_by.strip() or "Auditor",
+                        reason=discard_reason or "False positive — auditor review",
+                    )
+                    st.info(f"**{n} exception(s) discarded.** They will not appear in reports.")
+                    st.rerun()
+
+        csv_draft = drafts.to_csv(index=False).encode()
+        st.download_button(
+            "Export Draft Exceptions as CSV",
+            csv_draft,
+            "draft_exceptions_dynamic_audit_builder.csv",
+            "text/csv",
+            key=f"{PAGE_KEY}_export_drafts",
+        )

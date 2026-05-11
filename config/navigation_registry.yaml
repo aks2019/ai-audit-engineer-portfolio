@@ -1,0 +1,111 @@
+phases:
+  - id: plan
+    label: Plan & Checklist
+    items:
+      - page: "pages/policy_rag_bot.py"
+        label: "📋 Policy RAG Bot"
+        sap_modules: ["Governance"]
+      - page: "pages/dynamic_audit_builder.py"
+        label: "🛠️ Dynamic Audit Builder"
+        sap_modules: ["Governance"]
+      - page: "pages/audit_planning_engine.py"
+        label: "📅 Annual Audit Planning Engine"
+        sap_modules: ["Governance"]
+      - page: "pages/risk_register.py"
+        label: "⚠️ Risk Register & Priority Mapping"
+        sap_modules: ["Governance"]
+      - page: "pages/statistical_sampling.py"
+        label: "📐 Statistical Sampling"
+        sap_modules: ["Governance"]
+      - page: "pages/audit_session_manager.py"
+        label: "📅 Audit Session Manager"
+        permission_key: "edit_engagement"
+        sap_modules: ["Governance"]
+
+  - id: fieldwork
+    label: Execute (SAP Module Evidence)
+    items:
+      - page: "pages/anomaly_detector.py"
+        label: "🚨 Anomaly Detector"
+        sap_modules: ["FI"]
+      - page: "pages/financial_statement_auditor.py"
+        label: "📊 Financial Statement Auditor"
+        sap_modules: ["FI"]
+      - page: "pages/brs_reconciliation.py"
+        label: "🏦 BRS Reconciliation"
+        sap_modules: ["FI"]
+      - page: "pages/receivables_bad_debt.py"
+        label: "💰 Receivables & Bad Debt"
+        sap_modules: ["FI"]
+      - page: "pages/gst_tds_compliance.py"
+        label: "🧾 GST/TDS Compliance"
+        sap_modules: ["FI"]
+      - page: "pages/related_party_monitor.py"
+        label: "🔗 Related-Party Monitor"
+        sap_modules: ["FI"]
+      - page: "pages/duplicate_invoice_detector.py"
+        label: "🎭 Duplicate Invoice Detector"
+        sap_modules: ["FI", "MM"]
+      - page: "pages/inventory_anomaly.py"
+        label: "📦 Inventory Anomaly"
+        module_id: "inventory_anomaly"
+        sap_modules: ["MM"]
+      - page: "pages/fixed_asset_auditor.py"
+        label: "🏭 Fixed Asset Auditor"
+        sap_modules: ["FI"]
+      - page: "pages/expense_claim_auditor.py"
+        label: "✈️ Expense Claim Auditor"
+        sap_modules: ["FI", "HR"]
+      - page: "pages/payroll_audit.py"
+        label: "👥 Payroll Audit"
+        module_id: "payroll_audit"
+        sap_modules: ["HR"]
+      - page: "pages/sales_revenue_auditor.py"
+        label: "📈 Sales Revenue Auditor"
+        module_id: "sales_revenue_auditor"
+        sap_modules: ["SD"]
+      - page: "pages/itgc_sap_access_auditor.py"
+        label: "🔐 ITGC & SAP Access"
+        sap_modules: ["Basis", "Security"]
+      - page: "pages/sap_data_pack_auditor.py"
+        label: "📦 SAP Data Pack Auditor"
+        sap_modules: ["SAP"]
+      - page: "pages/contract_management_auditor.py"
+        label: "📜 Contract Management"
+        module_id: "contract_management"
+        sap_modules: ["MM", "SD"]
+
+  - id: review
+    label: Review & Workflow
+    items:
+      - page: "pages/audit_workflow.py"
+        label: "🔄 Audit Workflow Engine"
+        permission_key: "approve_maker_checker"
+        sap_modules: ["Governance"]
+      - page: "pages/nlp_document_intelligence.py"
+        label: "🧠 NLP Doc Intelligence"
+        sap_modules: ["Governance"]
+
+  - id: reporting
+    label: Reporting & Governance
+    items:
+      - page: "pages/audit_report_center.py"
+        label: "📑 Audit Report Center & MIS"
+        sap_modules: ["Governance"]
+      - page: "pages/audit_committee_pack.py"
+        label: "🏛️ Audit Committee Pack"
+        sap_modules: ["Governance"]
+      - page: "pages/audit_kpi_dashboard.py"
+        label: "📊 Audit KPI Dashboard"
+        sap_modules: ["Governance"]
+      - page: "pages/unified_dashboard.py"
+        label: "📈 Unified Anomaly Dashboard"
+        sap_modules: ["FI", "MM", "SD"]
+      - page: "pages/multi_company_dashboard.py"
+        label: "🏢 Multi-Company Dashboard"
+        sap_modules: ["Governance"]
+      - page: "pages/policy_management.py"
+        label: "🗄️ Policy Management"
+        permission_key: "manage_policies"
+        sap_modules: ["Governance"]
+

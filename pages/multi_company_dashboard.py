@@ -6,12 +6,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db, load_findings, record_kpi
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
 st.title("🏢 Multi-Company & Multi-Location Dashboard")
 st.caption("Group-level consolidated view | Subsidiary / Plant filtering")
 
+PAGE_KEY = "multi_company_dashboard"
+render_engagement_selector(PAGE_KEY)
+active_engagement_id = get_active_engagement_id(PAGE_KEY)
+if active_engagement_id is None:
+    st.info("Create an audit engagement first (Audit Session Manager), then come back to view multi-company results.")
+    st.stop()
+
 init_audit_db()
-findings = load_findings()
+findings = load_findings(engagement_id=active_engagement_id)
 
 if findings.empty:
     st.info("No findings yet. Run detection modules with company_code populated.")

@@ -8,12 +8,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import load_findings, compute_risk_score, init_audit_db
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
 st.title("⚠️ Audit Risk Register & Priority Mapping")
 st.caption("5×5 Risk Matrix | SQLite aggregation | Quarterly priority plan")
 
+PAGE_KEY = "risk_register"
+render_engagement_selector(PAGE_KEY)
+active_engagement_id = get_active_engagement_id(PAGE_KEY)
+if active_engagement_id is None:
+    st.info("Create an audit engagement first (Audit Session Manager), then come back to view the risk register.")
+    st.stop()
+
 init_audit_db()
-findings = load_findings()
+findings = load_findings(engagement_id=active_engagement_id)
 
 if findings.empty:
     st.info("No findings in audit.db yet. Run detection modules to populate.")

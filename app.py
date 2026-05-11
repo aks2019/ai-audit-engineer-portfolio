@@ -1,4 +1,6 @@
 import streamlit as st
+import yaml
+import os
 import sys
 from pathlib import Path
 
@@ -8,8 +10,9 @@ from utils.industry_filter import (
     is_page_enabled
 )
 from utils.audit_db import load_findings, get_kpis
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 from core.init_audit_system import initialize_audit_system
-from core.rbac import init_rbac, get_user, has_permission
+from core.rbac import init_rbac, get_user, has_permission, verify_password, hash_password, log_governance_action
 
 st.set_page_config(page_title="AI Audit Engineer", page_icon="🚨", layout="wide")
 
@@ -30,8 +33,34 @@ if "current_role" not in st.session_state:
 
 def login_user(username: str, password: str = None) -> bool:
     """Authenticate user and set session state."""
+    if not password:
+        return False
+
     user = get_user(username)
     if user and user.get("status") == "Active":
+        stored_hash = user.get("password_hash")
+
+        # If password_hash is missing (pre-upgrade DB), allow first-time migration
+        # only when password matches the default expectation.
+        if stored_hash:
+            if not verify_password(password, stored_hash):
+                return False
+        else:
+            default_password = os.getenv("AUDIT_DEFAULT_PASSWORD")
+            expected_plain = default_password if default_password is not None else username
+            if password != expected_plain:
+                return False
+
+            # Upgrade this user record to hashed password.
+            import sqlite3
+            conn = sqlite3.connect("data/audit.db")
+            conn.execute(
+                "UPDATE audit_users SET password_hash=? WHERE username=?",
+                (hash_password(password), username),
+            )
+            conn.commit()
+            conn.close()
+
         st.session_state["logged_in"] = True
         st.session_state["current_user"] = username
         st.session_state["current_role"] = user.get("role", "viewer")
@@ -41,11 +70,17 @@ def login_user(username: str, password: str = None) -> bool:
         conn.execute("UPDATE audit_users SET last_login = CURRENT_TIMESTAMP WHERE username = ?", (username,))
         conn.commit()
         conn.close()
+
+        log_governance_action(username, "LOGIN", entity_type="auth")
         return True
     return False
 
 def logout_user():
     """Clear session state and log out."""
+    current_user = st.session_state.get("current_user")
+    if current_user:
+        log_governance_action(current_user, "LOGOUT", entity_type="auth")
+
     st.session_state["logged_in"] = False
     st.session_state["current_user"] = None
     st.session_state["current_role"] = None
@@ -100,56 +135,32 @@ if selected != current:
     st.rerun()
 
 st.sidebar.divider()
-st.sidebar.page_link("pages/anomaly_detector.py", label="🚨 P1: Anomaly Detector")
-st.sidebar.page_link("pages/policy_rag_bot.py", label="📋 P2: Policy RAG Bot")
-st.sidebar.page_link("pages/dynamic_audit_builder.py", label="🛠️ P3: Dynamic Audit Builder")
-st.sidebar.page_link("pages/financial_statement_auditor.py", label="📊 P4: Financial Statement Auditor")
-st.sidebar.page_link("pages/brs_reconciliation.py", label="🏦 P5: BRS Reconciliation")
-st.sidebar.page_link("pages/receivables_bad_debt.py", label="💰 P6: Receivables & Bad Debt")
-st.sidebar.page_link("pages/unified_dashboard.py", label="📈 P7: Unified Dashboard")
-st.sidebar.page_link("pages/gst_tds_compliance.py", label="🧾 P8: GST/TDS Compliance")
-st.sidebar.page_link("pages/related_party_monitor.py", label="🔗 P9: Related-Party Monitor")
-st.sidebar.page_link("pages/duplicate_invoice_detector.py", label="🎭 P10: Duplicate Invoice Detector")
-if is_page_enabled("inventory_anomaly"):
-    st.sidebar.page_link("pages/inventory_anomaly.py", label="📦 P11: Inventory Anomaly")
-st.sidebar.page_link("pages/fixed_asset_auditor.py", label="🏭 P12: Fixed Asset Auditor")
-st.sidebar.page_link("pages/expense_claim_auditor.py", label="✈️ P13: Expense Claim Auditor")
-st.sidebar.page_link("pages/audit_planning_engine.py", label="📅 P14: Audit Planning Engine")
-st.sidebar.page_link("pages/risk_register.py", label="⚠️ P15: Risk Register")
-st.sidebar.page_link("pages/audit_report_center.py", label="📑 P16: Audit Report Center")
-st.sidebar.page_link("pages/audit_committee_pack.py", label="🏛️ P17: Audit Committee Pack")
-st.sidebar.page_link("pages/payroll_audit.py", label="👥 P18: Payroll Audit")
-if is_page_enabled("sales_revenue_auditor"):
-    st.sidebar.page_link("pages/sales_revenue_auditor.py", label="📈 P19: Sales Revenue Auditor")
-st.sidebar.page_link("pages/itgc_sap_access_auditor.py", label="🔐 P20: ITGC & SAP Access")
-st.sidebar.page_link("pages/sap_data_pack_auditor.py", label="📦 P21: SAP Data Pack Auditor")
-if is_page_enabled("contract_management"):
-    st.sidebar.page_link("pages/contract_management_auditor.py", label="📜 P22: Contract Management")
-st.sidebar.divider()
-st.sidebar.markdown("**🔧 Phase 2 Tools**")
 
-# Audit Workflow - requires maker-checker approval permissions
-if has_permission(st.session_state["current_user"], "approve_maker_checker"):
-    st.sidebar.page_link("pages/audit_workflow.py", label="🔄 P23: Audit Workflow Engine")
-else:
-    st.sidebar.page_link("pages/audit_workflow.py", label="🔄 P23: Audit Workflow Engine", disabled=True)
+nav_registry_path = Path(__file__).parent / "config" / "navigation_registry.yaml"
+nav_registry = {}
+try:
+    if nav_registry_path.exists():
+        nav_registry = yaml.safe_load(nav_registry_path.read_text(encoding="utf-8")) or {}
+except Exception as e:
+    st.sidebar.warning(f"Navigation registry could not be loaded: {e}")
 
-st.sidebar.page_link("pages/nlp_document_intelligence.py", label="🧠 P24: NLP Doc Intelligence")
-st.sidebar.page_link("pages/multi_company_dashboard.py", label="🏢 P25: Multi-Company View")
-st.sidebar.page_link("pages/statistical_sampling.py", label="📐 P26: Statistical Sampling")
-st.sidebar.page_link("pages/audit_kpi_dashboard.py", label="📊 P27: Audit KPI Dashboard")
+phases = nav_registry.get("phases", [])
+for i, phase in enumerate(phases):
+    st.sidebar.markdown(f"**{phase.get('label', f'Phase {i+1}') }**")
+    for item in phase.get("items", []):
+        page = item["page"]
+        label = item.get("label", page)
 
-# Audit Session Manager - requires edit permissions
-if has_permission(st.session_state["current_user"], "edit_engagement"):
-    st.sidebar.page_link("pages/audit_session_manager.py", label="📅 P28: Audit Session Manager")
-else:
-    st.sidebar.page_link("pages/audit_session_manager.py", label="📅 P28: Audit Session Manager", disabled=True)
+        module_id = item.get("module_id")
+        if module_id and not is_page_enabled(module_id):
+            continue
 
-# Policy Management - requires manage policies permission
-if has_permission(st.session_state["current_user"], "manage_policies"):
-    st.sidebar.page_link("pages/policy_management.py", label="🗄️ P29: Policy Management")
-else:
-    st.sidebar.page_link("pages/policy_management.py", label="🗄️ P29: Policy Management", disabled=True)
+        permission_key = item.get("permission_key")
+        disabled = bool(permission_key) and not has_permission(st.session_state["current_user"], permission_key)
+        st.sidebar.page_link(page, label=label, disabled=disabled)
+
+    if i < len(phases) - 1:
+        st.sidebar.divider()
 
 # Role Badge
 st.sidebar.divider()
@@ -198,11 +209,19 @@ if "audit_system_initialized" not in st.session_state:
     st.session_state["audit_system_initialized"] = True
 
 # Live metrics from SQLite
-findings = load_findings()
-total_findings = len(findings)
-open_findings = len(findings[findings["status"] == "Open"]) if not findings.empty else 0
-critical_findings = len(findings[findings["risk_band"] == "CRITICAL"]) if not findings.empty else 0
-high_findings = len(findings[findings["risk_band"] == "HIGH"]) if not findings.empty else 0
+render_engagement_selector("home")
+active_engagement_id = get_active_engagement_id("home")
+if active_engagement_id is None:
+    total_findings = 0
+    open_findings = 0
+    critical_findings = 0
+    high_findings = 0
+else:
+    findings = load_findings(engagement_id=active_engagement_id)
+    total_findings = len(findings)
+    open_findings = len(findings[findings["status"] == "Open"]) if not findings.empty else 0
+    critical_findings = len(findings[findings["risk_band"] == "CRITICAL"]) if not findings.empty else 0
+    high_findings = len(findings[findings["risk_band"] == "HIGH"]) if not findings.empty else 0
 
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("📁 Total Findings", total_findings)

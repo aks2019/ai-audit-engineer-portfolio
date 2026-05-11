@@ -496,13 +496,25 @@ def init_draft_findings_table():
 
 def compute_finding_hash(data: dict) -> str:
     """Compute deterministic hash to detect duplicate findings."""
-    content = json.dumps({
+    amt = data.get("amount_at_risk", 0)
+    try:
+        if amt is None or pd.isna(amt):
+            amt_f = 0.0
+        else:
+            amt_f = float(amt)
+    except (TypeError, ValueError):
+        amt_f = 0.0
+    payload = {
         "area": data.get("area"),
         "finding": data.get("finding"),
-        "vendor": data.get("vendor_name"),
-        "amount": data.get("amount_at_risk"),
-        "period": data.get("period")
-    }, sort_keys=True)
+        "vendor": str(data.get("vendor_name") or "").strip(),
+        "amount": amt_f,
+        "period": str(data.get("period") or ""),
+    }
+    ref = str(data.get("source_row_ref") or "").strip()
+    if ref:
+        payload["source_row_ref"] = ref
+    content = json.dumps(payload, sort_keys=True)
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
@@ -525,12 +537,20 @@ def stage_findings(findings_df: pd.DataFrame, module_name: str, run_id: str = No
     for _, row in findings_df.iterrows():
         area_value = str(row.get("area", "")).strip() or module_name
         finding_value = str(row.get("finding", "")).strip() or str(row.get("flag_reason", "Anomaly detected")).strip() or "Anomaly detected"
+        amt_raw = row.get("amount_at_risk", 0)
+        try:
+            amount_float = 0.0 if amt_raw is None or pd.isna(amt_raw) else float(amt_raw)
+        except (TypeError, ValueError):
+            amount_float = 0.0
+        src_ref = str(row.get("source_row_ref", "") or "").strip()
+        row_period = str(row.get("period") or period or "")
         finding_data = {
             "area": area_value,
             "finding": finding_value,
-            "vendor_name": row.get("vendor_name", ""),
-            "amount_at_risk": row.get("amount_at_risk", 0),
-            "period": row.get("period", period)
+            "vendor_name": str(row.get("vendor_name", "") or ""),
+            "amount_at_risk": amount_float,
+            "period": row_period,
+            "source_row_ref": src_ref,
         }
         finding_hash = compute_finding_hash(finding_data)
         # Idempotency guard: do not stage the exact same finding again for the same
@@ -559,9 +579,9 @@ def stage_findings(findings_df: pd.DataFrame, module_name: str, run_id: str = No
             run_id, module_name, engagement_id, entity_id,
             row.get("company_code", "HQ"), row.get("plant_code", ""),
             area_value, row.get("checklist_ref", ""), finding_value,
-            row.get("amount_at_risk", 0), row.get("vendor_name", ""), row.get("finding_date", ""),
-            row.get("period", period), row.get("risk_band", "MEDIUM"), "Draft",
-            ai_explanation, ai_citations, row.get("source_row_ref", ""),
+            amount_float, str(row.get("vendor_name", "") or ""), row.get("finding_date", ""),
+            row_period, row.get("risk_band", "MEDIUM"), "Draft",
+            ai_explanation, ai_citations, src_ref or row.get("source_row_ref", ""),
             source_file_name, source_file_hash, generated_by, finding_hash
         ))
         staged_count += 1

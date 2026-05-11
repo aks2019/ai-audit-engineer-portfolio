@@ -45,6 +45,44 @@ if "sap_column_maps" not in st.session_state:
 st.title("📦 SAP Data Pack Auditor")
 st.markdown("**100% Population Testing • FBL1N · FBL5N · FBL3N · MB51 · MB52 · AS03 · SUIM**")
 
+# ── SAP Module Hub (Tools ↔ Data Packs ↔ T-codes) ─────────────────────────────
+st.subheader("🧭 SAP Module Hub (Tools ↔ Data Packs ↔ T-codes)")
+
+# Inferred mapping: which audit tools typically pair with which SAP extracts.
+# Source of truth for the available extracts is `checks/sap/SAP_DATA_PACKS`.
+tcode_to_tool = {
+    "FBL1N": "Duplicate Invoice Detector",
+    "FBL5N": "Receivables & Bad Debt",
+    "FBL3N": "BRS Reconciliation",
+    "MB51": "Inventory Anomaly",
+    "MB52": "Inventory Anomaly",
+    "AS03": "Fixed Asset Auditor",
+    "SUIM": "ITGC & SAP Access",
+}
+
+module_to_pack_types = {
+    "FI": ["FBL1N", "FBL5N", "FBL3N", "AS03"],
+    "MM": ["MB51", "MB52"],
+    "IT_Security": ["SUIM"],
+}
+
+hub_rows = []
+for sap_module, pack_types in module_to_pack_types.items():
+    available_pack_types = [p for p in pack_types if p in SAP_DATA_PACKS]
+    tools = sorted({tcode_to_tool.get(p, "SAP Data Pack Auditor") for p in available_pack_types})
+    tcode_hints = [SAP_DATA_PACKS[p]["sap_tcode"] for p in available_pack_types]
+    hub_rows.append(
+        {
+            "SAP Module": sap_module,
+            "Tools": ", ".join(tools),
+            "Data Packs": ", ".join(available_pack_types),
+            "T-code Hints": ", ".join(tcode_hints),
+        }
+    )
+
+hub_df = pd.DataFrame(hub_rows)
+st.dataframe(hub_df, use_container_width=True, hide_index=True)
+
 # ── SIDEBAR: Data Pack Reference ──────────────────────────────────
 with st.sidebar:
     st.header("📋 Data Pack Reference")

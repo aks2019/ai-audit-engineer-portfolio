@@ -10,16 +10,24 @@ from reportlab.pdfgen import canvas
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import load_findings, init_audit_db, update_status
 from utils.compliance_loader import load_compliance_calendar
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
 st.title("🏛️ Audit Committee Report Pack")
 st.caption("Companies Act Section 177 + SEBI LODR Regulation 18 | Board-ready export")
+
+PAGE_KEY = "audit_committee_pack"
+render_engagement_selector(PAGE_KEY)
+active_engagement_id = get_active_engagement_id(PAGE_KEY)
+if active_engagement_id is None:
+    st.info("Create an audit engagement first (Audit Session Manager), then come back to generate the committee pack.")
+    st.stop()
 
 init_audit_db()
 cal = load_compliance_calendar()
 
 # Section 1 — ATR
 st.subheader("Section 1 — Action Taken Report (ATR)")
-prev = load_findings()
+prev = load_findings(engagement_id=active_engagement_id)
 atr = prev[prev["status"].isin(["Management Response","Closed"])] if not prev.empty else pd.DataFrame()
 if not atr.empty:
     st.dataframe(atr[["area","finding","status"]], use_container_width=True, hide_index=True)
@@ -28,7 +36,7 @@ else:
 
 # Section 2 — New Critical Observations
 st.subheader("Section 2 — New Critical Observations")
-critical = load_findings(risk_bands=["CRITICAL","HIGH"])
+critical = load_findings(engagement_id=active_engagement_id, risk_bands=["CRITICAL","HIGH"])
 if not critical.empty:
     critical = critical.sort_values("amount_at_risk", ascending=False)
     st.dataframe(critical[["area","checklist_ref","finding","amount_at_risk","risk_band"]], use_container_width=True, hide_index=True)

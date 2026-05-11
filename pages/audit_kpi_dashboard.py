@@ -7,12 +7,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db, load_findings, record_kpi, get_kpis
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
 st.title("📊 Audit KPI Dashboard")
 st.caption("Efficiency metrics | Auditor productivity | Cost per hour | Closure trends")
 
+PAGE_KEY = "audit_kpi_dashboard"
+render_engagement_selector(PAGE_KEY)
+active_engagement_id = get_active_engagement_id(PAGE_KEY)
+if active_engagement_id is None:
+    st.info("Create an audit engagement first (Audit Session Manager), then come back to view KPIs.")
+    st.stop()
+
 init_audit_db()
-findings = load_findings()
+findings = load_findings(engagement_id=active_engagement_id)
 
 if findings.empty:
     st.info("No findings yet. Run detection modules to populate KPIs.")
@@ -25,11 +33,11 @@ else:
     avg_days = findings["days_to_close"].mean() if "days_to_close" in findings.columns else 0
     critical = len(findings[findings["risk_band"] == "CRITICAL"])
 
-    record_kpi("total_findings", total, period)
-    record_kpi("open_findings", open_count, period)
-    record_kpi("closed_findings", closed_count, period)
-    record_kpi("avg_days_to_close", avg_days, period)
-    record_kpi("critical_findings", critical, period)
+    record_kpi("total_findings", total, period, engagement_id=active_engagement_id)
+    record_kpi("open_findings", open_count, period, engagement_id=active_engagement_id)
+    record_kpi("closed_findings", closed_count, period, engagement_id=active_engagement_id)
+    record_kpi("avg_days_to_close", avg_days, period, engagement_id=active_engagement_id)
+    record_kpi("critical_findings", critical, period, engagement_id=active_engagement_id)
 
     # Display KPI cards
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -40,7 +48,7 @@ else:
     c5.metric("Critical", critical)
 
     # Trend over periods
-    kpi_df = get_kpis()
+    kpi_df = get_kpis(engagement_id=active_engagement_id)
     if not kpi_df.empty:
         st.subheader("📈 KPI Trends")
         trend = kpi_df[kpi_df["metric_name"].isin(["total_findings","closed_findings","critical_findings"])]

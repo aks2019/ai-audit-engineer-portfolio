@@ -6,9 +6,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db, load_findings, update_status, get_workflow_history, get_sla_breaches
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
 st.title("🔄 Audit Finding Workflow Engine")
 st.caption("Status lifecycle: Open → In Progress → Management Response → Verified → Closed | SLA tracking")
+
+PAGE_KEY = "audit_workflow"
+render_engagement_selector(PAGE_KEY)
+active_engagement_id = get_active_engagement_id(PAGE_KEY)
+if active_engagement_id is None:
+    st.info("Create an audit engagement first (Audit Session Manager), then come back to manage workflow.")
+    st.stop()
 
 init_audit_db()
 
@@ -18,7 +26,10 @@ status_filter = st.sidebar.multiselect("Status", ["Open","In Progress","Manageme
 area_filter = st.sidebar.text_input("Area (optional)")
 assigned_filter = st.sidebar.text_input("Assigned To (optional)")
 
-findings = load_findings(status=status_filter[0] if len(status_filter)==1 else None)
+findings = load_findings(
+    engagement_id=active_engagement_id,
+    status=status_filter[0] if len(status_filter)==1 else None
+)
 if not findings.empty and len(status_filter) > 1:
     findings = findings[findings["status"].isin(status_filter)]
 if not findings.empty and area_filter:
@@ -27,7 +38,7 @@ if not findings.empty and assigned_filter:
     findings = findings[findings["assigned_to"].str.contains(assigned_filter, case=False, na=False)]
 
 # SLA Breaches alert
-breaches = get_sla_breaches()
+breaches = get_sla_breaches(engagement_id=active_engagement_id)
 if not breaches.empty:
     st.error(f"⏰ {len(breaches)} findings have breached SLA deadline!")
 

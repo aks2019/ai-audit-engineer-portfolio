@@ -11,6 +11,7 @@ from reportlab.pdfgen import canvas
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import load_findings, init_audit_db
 from utils.rag_engine import _get_llm, get_free_form_chain
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 
 
 def _unique_excel_sheet_name(area: object, used: set[str]) -> str:
@@ -36,11 +37,19 @@ def _unique_excel_sheet_name(area: object, used: set[str]) -> str:
 st.title("📑 Audit Report Center + MIS Audit Report")
 st.caption("Centralized reports | CFO-ready MIS | LLM synthesis")
 
+PAGE_KEY = "audit_report_center"
+render_engagement_selector(PAGE_KEY)
+active_engagement_id = get_active_engagement_id(PAGE_KEY)
+
+if active_engagement_id is None:
+    st.info("Create an audit engagement first (Audit Session Manager), then come back to generate reports.")
+    st.stop()
+
 tab1, tab2 = st.tabs(["Report Center", "MIS Audit Report"])
 
 with tab1:
     init_audit_db()
-    findings = load_findings()
+    findings = load_findings(engagement_id=active_engagement_id)
     if findings.empty:
         st.info("No findings yet. Run detection on any page and confirm findings to see them here.")
     else:
@@ -91,7 +100,7 @@ with tab2:
     st.subheader("MIS Audit Report (CFO-Ready)")
     period = st.selectbox("Period", ["Q1","Q2","Q3","Q4","H1","H2","Annual"])
     if st.button("Generate MIS Report"):
-        findings = load_findings(risk_bands=["HIGH","CRITICAL"])
+        findings = load_findings(engagement_id=active_engagement_id, risk_bands=["HIGH","CRITICAL"])
         if findings.empty:
             st.info("No HIGH/CRITICAL findings for selected period.")
         else:

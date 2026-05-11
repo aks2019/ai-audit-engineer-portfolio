@@ -8,10 +8,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import load_findings, init_audit_db
+from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
 from utils.compliance_loader import load_compliance_calendar, get_industry_profile
 
 st.title("📈 Unified Anomaly Intelligence Dashboard")
 st.caption("Aggregated risk view across all audit modules")
+
+PAGE_KEY = "unified_dashboard"
+render_engagement_selector(PAGE_KEY)
+active_engagement_id = get_active_engagement_id(PAGE_KEY)
+if active_engagement_id is None:
+    st.info("Create an audit engagement first (Audit Session Manager), then come back to view the unified dashboard.")
+    st.stop()
 
 init_audit_db()
 profile = get_industry_profile("manufacturing_fmcg")
@@ -21,7 +29,7 @@ industry = st.sidebar.selectbox("Industry Profile", ["manufacturing_fmcg","it_se
 profile = get_industry_profile(industry)
 
 # Load all findings
-findings = load_findings()
+findings = load_findings(engagement_id=active_engagement_id)
 
 if findings.empty:
     st.info("No findings yet. Run detection modules to populate the dashboard.")

@@ -100,6 +100,24 @@ if uploaded_file:
                         index=0 if col not in df.columns else list(df.columns).index(col) + 1
                     )
 
+        # Prevent heavy model execution on every rerun while the auditor is still mapping columns.
+        file_sig = hashlib.sha256(uploaded_file.getvalue()).hexdigest()[:12]
+        mapping_sig = hashlib.sha256(
+            str({
+                "amount_col": amount_col,
+                "vendor_col": vendor_col,
+                "optional_mapping": mapping,
+            }).encode("utf-8")
+        ).hexdigest()[:12]
+        current_analysis_token = f"{file_sig}:{mapping_sig}"
+
+        if st.button("▶️ Run Detection", type="primary", key=f"{PAGE_KEY}_run_detection_btn"):
+            st.session_state[f"{PAGE_KEY}_analysis_token"] = current_analysis_token
+
+        if st.session_state.get(f"{PAGE_KEY}_analysis_token") != current_analysis_token:
+            st.info("Select the required columns and click **Run Detection** to start analysis.")
+            st.stop()
+
         df = df.rename(columns={amount_col: "amount", vendor_col: "vendor_name"})
 
         for internal in optional_cols:

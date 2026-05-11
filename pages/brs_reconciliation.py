@@ -6,9 +6,16 @@ from datetime import datetime
 import sys
 from pathlib import Path
 from sklearn.ensemble import IsolationForest
+import hashlib
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.audit_db import init_audit_db
+from utils.audit_db import (
+    stage_findings,
+    load_draft_findings,
+    confirm_draft_findings,
+    discard_draft_findings,
+)
 from utils.base_audit_check import BaseAuditCheck
 from utils.compliance_loader import load_compliance_calendar
 from utils.audit_page_helpers import render_engagement_selector, get_active_engagement_id
@@ -35,8 +42,33 @@ if bank_file and gl_file:
         g_date   = st.selectbox("GL Date", gdf.columns, key="g_dt")
         g_narr   = st.selectbox("GL Narration (optional)", ["None"]+list(gdf.columns), key="g_narr")
 
+    analysis_token = hashlib.sha256(
+        (
+            bank_file.getvalue()
+            + gl_file.getvalue()
+            + str(
+                {
+                    "b_amount": b_amount,
+                    "b_date": b_date,
+                    "b_narr": b_narr,
+                    "g_amount": g_amount,
+                    "g_date": g_date,
+                    "g_narr": g_narr,
+                }
+            ).encode("utf-8")
+        )
+    ).hexdigest()[:16]
+    if st.button("▶️ Run Detection", type="primary", key=f"{PAGE_KEY}_run_detection_btn"):
+        st.session_state[f"{PAGE_KEY}_analysis_token"] = analysis_token
+
+    if st.session_state.get(f"{PAGE_KEY}_analysis_token") != analysis_token:
+        st.info("Map columns, then click **Run Detection**.")
+        st.stop()
+
     bdf = bdf.rename(columns={b_amount:"amount", b_date:"date"})
     gdf = gdf.rename(columns={g_amount:"amount", g_date:"date"})
+    bdf["amount"] = pd.to_numeric(bdf["amount"], errors="coerce").fillna(0)
+    gdf["amount"] = pd.to_numeric(gdf["amount"], errors="coerce").fillna(0)
     bdf["date"] = pd.to_datetime(bdf["date"], errors="coerce")
     gdf["date"] = pd.to_datetime(gdf["date"], errors="coerce")
 
@@ -94,7 +126,7 @@ if bank_file and gl_file:
 
         # ── Stage Findings for Draft Review (NOT auto-logged) ──
         init_audit_db()
-        run_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        run_id = hashlib.sha256(bank_file.getvalue() + gl_file.getvalue()).hexdigest()[:12]
         
         # Prepare findings DataFrame with required columns for staging
         staging_df = unmatched_bank.head(100).copy()
@@ -109,9 +141,8 @@ if bank_file and gl_file:
         staging_df["vendor_name"] = staging_df.get("vendor_name", "")
         staging_df["finding_date"] = datetime.utcnow().strftime("%Y-%m-%d")
         
-        if not staging_df.empty:
-            from utils.audit_db import stage_findings as _stage_findings
-            _staged = _stage_findings(
+        if not staging_df.empty and st.session_state.get(f"{PAGE_KEY}_draft_run_id") != run_id:
+            _staged = stage_findings(
                 staging_df,
                 module_name="Brs Reconciliation",
                 run_id=run_id,
@@ -121,6 +152,8 @@ if bank_file and gl_file:
             )
             st.info(f"📋 **{_staged} exception(s) staged for your review.** Nothing has been added to the official audit trail yet.")
             st.session_state[f"{PAGE_KEY}_draft_run_id"] = run_id
+        elif not staging_df.empty:
+            st.caption(f"📋 Exceptions already staged (run: `{run_id}`). Review below.")
 
 
 # --- AI Audit Report (RAG) ---
@@ -141,8 +174,111 @@ except Exception as _e:
 
 
 # --- Draft Review ---
-try:
-    from utils.audit_page_helpers import render_draft_review_section
-    render_draft_review_section("brs", "Brs Reconciliation")
-except Exception as _e:
-    st.caption(f"Draft review unavailable: {_e}")
+current_run_id = st.session_state.get(f"{PAGE_KEY}_draft_run_id")
+if current_run_id:
+    st.divider()
+    st.subheader("Review & Confirm Findings")
+    st.caption("Use the Select column in the table to confirm/discard. No separate selector is required.")
+
+    drafts = load_draft_findings(
+        run_id=current_run_id,
+        module_name="Brs Reconciliation",
+        status="Draft",
+        engagement_id=get_active_engagement_id(PAGE_KEY),
+    )
+
+    if drafts.empty:
+        st.info("No draft exceptions pending for the current run.")
+    else:
+        default_select_all = st.checkbox(
+            "Select all draft exceptions",
+            value=False,
+            key=f"{PAGE_KEY}_select_all_drafts",
+        )
+        st.caption(f"**{len(drafts)} draft exception(s)** pending review.")
+
+        review_df = drafts[["id", "area", "finding", "amount_at_risk", "risk_band", "vendor_name"]].copy()
+        review_df.insert(0, "select", default_select_all)
+
+        edited = st.data_editor(
+            review_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "select": st.column_config.CheckboxColumn("Select"),
+                "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
+                "area": st.column_config.TextColumn("Area", disabled=True),
+                "finding": st.column_config.TextColumn("Finding (editable)", width="large"),
+                "amount_at_risk": st.column_config.NumberColumn("Amount at Risk", format="%.0f"),
+                "risk_band": st.column_config.SelectboxColumn(
+                    "Risk Band",
+                    options=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                ),
+                "vendor_name": st.column_config.TextColumn("Vendor", disabled=True),
+            },
+            key=f"{PAGE_KEY}_draft_editor_inline_select",
+        )
+
+        selected_ids = edited.loc[edited["select"] == True, "id"].astype(int).tolist()
+        confirmed_by = st.text_input(
+            "Confirmed / Reviewed by (auditor name)",
+            value="Auditor",
+            key=f"{PAGE_KEY}_confirmed_by",
+        )
+
+        c_confirm, c_discard = st.columns(2)
+        with c_confirm:
+            if st.button(
+                "Confirm Selected to Official Audit Trail",
+                type="primary",
+                use_container_width=True,
+                key=f"{PAGE_KEY}_confirm_btn",
+            ):
+                if not selected_ids:
+                    st.warning("Select at least one exception in the table.")
+                else:
+                    edited_vals = {
+                        int(row["id"]): {
+                            "finding": row.get("finding", ""),
+                            "amount_at_risk": row.get("amount_at_risk", 0),
+                            "risk_band": row.get("risk_band", "MEDIUM"),
+                        }
+                        for _, row in edited.iterrows()
+                    }
+                    n = confirm_draft_findings(
+                        selected_ids,
+                        confirmed_by=confirmed_by.strip() or "Auditor",
+                        edited_values=edited_vals,
+                    )
+                    st.success(f"**{n} finding(s) confirmed** and added to the official audit trail.")
+                    st.rerun()
+
+        with c_discard:
+            discard_reason = st.text_input(
+                "Discard reason (optional)",
+                key=f"{PAGE_KEY}_discard_reason",
+            )
+            if st.button(
+                "Discard Selected (False Positives)",
+                use_container_width=True,
+                key=f"{PAGE_KEY}_discard_btn",
+            ):
+                if not selected_ids:
+                    st.warning("Select at least one exception in the table.")
+                else:
+                    n = discard_draft_findings(
+                        selected_ids,
+                        discarded_by=confirmed_by.strip() or "Auditor",
+                        reason=discard_reason or "False positive — auditor review",
+                    )
+                    st.info(f"**{n} exception(s) discarded.** They will not appear in reports.")
+                    st.rerun()
+
+        csv_draft = drafts.to_csv(index=False).encode()
+        st.download_button(
+            "Export Draft Exceptions as CSV",
+            csv_draft,
+            "draft_exceptions_brs.csv",
+            "text/csv",
+            key=f"{PAGE_KEY}_export_drafts",
+        )
