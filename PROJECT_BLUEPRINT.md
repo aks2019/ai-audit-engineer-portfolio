@@ -40,7 +40,7 @@
 
 ---
 
-## 3. MODULE MAP (26 Pages)
+## 3. MODULE MAP (28 Pages)
 
 ### Phase 1 — Core Detection & Analysis (P1–P21)
 | # | Module | File | Key Feature |
@@ -67,7 +67,7 @@
 | P20 | ITGC & SAP Access | `pages/itgc_sap_access_auditor.py` | SoD matrix, privileged access |
 | P21 | Contract Management | `pages/contract_management_auditor.py` | Expiry, LD non-recovery, concentration |
 
-### Phase 2 — Advanced Tools (P22–P26)
+### Phase 2 — Advanced Tools (P22–P28)
 | # | Module | File | Key Feature |
 |---|---|---|---|
 | P22 | Audit Workflow Engine | `pages/audit_workflow.py` | Status lifecycle, SLA tracking, audit trail |
@@ -75,6 +75,8 @@
 | P24 | Multi-Company Dashboard | `pages/multi_company_dashboard.py` | Group consolidation, plant-level filtering |
 | P25 | Statistical Sampling | `pages/statistical_sampling.py` | MUS, Random, Cell, Stratified |
 | P26 | Audit KPI Dashboard | `pages/audit_kpi_dashboard.py` | Closure rate, productivity, trends |
+| P27 | Audit Session Manager | `pages/audit_session_manager.py` | Session state, multi-user support |
+| P28 | Policy Management | `pages/policy_management.py` | Policy CRUD, version control |
 
 ---
 
@@ -152,7 +154,7 @@ DATABASE_URL=<Neon PostgreSQL URL>
 - [ ] Set `DATABASE_URL` (Neon) on Render
 - [ ] Set `USE_LOCAL_LLM=false`
 - [ ] Run `ingest_policies.py` to index 17 checklists into pgvector
-- [ ] Verify all 26 pages load without ImportError
+- [ ] Verify all 28 pages load without ImportError
 - [ ] Verify `data/audit.db` auto-creates on first run
 - [ ] Test `_get_llm()` returns Gemini (not local) on Render
 

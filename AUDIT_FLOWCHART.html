@@ -325,9 +325,9 @@
 <!-- ═══════════════════════════════ HEADER ═══════════════════════════════ -->
 <div class="header">
   <h1>AI Audit Engineer — Complete Audit Flowchart</h1>
-  <p>End-to-end flow across all 26 modules · Powered by Gemini 1.5 Pro · Streamlit · SQLite</p>
+  <p>End-to-end flow across all 28 modules · Powered by Gemini 1.5 Pro · Streamlit · SQLite · pgvector</p>
   <div class="badge-row">
-    <span class="badge badge-blue">26 Audit Modules</span>
+    <span class="badge badge-blue">28 Audit Modules</span>
     <span class="badge badge-green">100% Population Testing</span>
     <span class="badge badge-purple">RAG + LLM</span>
     <span class="badge badge-orange">IsolationForest + XGBoost</span>
@@ -342,7 +342,7 @@
   <button class="tab-btn" onclick="showTab('dataflow')">Data Flow</button>
   <button class="tab-btn" onclick="showTab('workflow')">Workflow Lifecycle</button>
   <button class="tab-btn" onclick="showTab('reporting')">Reporting Phase</button>
-  <button class="tab-btn" onclick="showTab('modules')">All 26 Modules</button>
+  <button class="tab-btn" onclick="showTab('modules')">All 28 Modules</button>
   <button class="tab-btn" onclick="showTab('database')">Database Schema</button>
   <button class="tab-btn" onclick="showTab('timeline')">Audit Cycle Timeline</button>
 </div>
@@ -870,7 +870,7 @@ flowchart LR
   <!-- ────────── TAB 6: ALL MODULES ────────── -->
   <div class="section" id="tab-modules">
     <div class="section-header">
-      <h2>All 26 Modules — Reference Table</h2>
+      <h2>All 28 Modules — Reference Table</h2>
       <p>Complete listing of every module, its phase, engine, inputs, and outputs</p>
     </div>
 
@@ -940,6 +940,8 @@ flowchart LR
         <tr><td><b>P24</b> Multi-Company Dashboard</td><td>multi_company_dashboard.py</td><td class="phase-cell" style="color:#39d353">Dashboard</td><td>SQLite reads</td><td>audit_findings (company_code/plant)</td><td>Group charts · heat maps</td><td><span class="pill pill-green">Read-only</span></td></tr>
         <tr><td><b>P25</b> Statistical Sampling</td><td>statistical_sampling.py</td><td class="phase-cell" style="color:#bc8cff">Analysis</td><td>MUS · Random · Cell · Stratified</td><td>Population CSV/Excel</td><td>Sample CSV for fieldwork</td><td><span class="pill pill-orange">sampling_runs</span></td></tr>
         <tr><td><b>P26</b> Audit KPI Dashboard</td><td>audit_kpi_dashboard.py</td><td class="phase-cell" style="color:#39d353">Dashboard</td><td>SQLite reads</td><td>audit_findings + audit_kpi</td><td>KPI cards · trend charts</td><td><span class="pill pill-orange">audit_kpi</span></td></tr>
+        <tr><td><b>P27</b> Audit Session Manager</td><td>audit_session_manager.py</td><td class="phase-cell" style="color:#f0883e">Governance</td><td>Streamlit session state</td><td>Multi-user sessions</td><td>Session management · state persistence</td><td><span class="pill pill-green">No DB write</span></td></tr>
+        <tr><td><b>P28</b> Policy Management</td><td>policy_management.py</td><td class="phase-cell" style="color:#bc8cff">Governance</td><td>SQLite reads/writes</td><td>Policy documents</td><td>Policy CRUD · version control</td><td><span class="pill pill-orange">policy_versions</span></td></tr>
       </tbody>
     </table>
   </div>

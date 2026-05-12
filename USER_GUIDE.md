@@ -8,11 +8,11 @@
 ### 1.1 Launch the Application
 - **Local:** `streamlit run app.py`
 - **Cloud:** Open https://aiauditengineer.onrender.com
-- Use the **sidebar** on the left to navigate between all 26 modules.
+- Use the **sidebar** on the left to navigate between all 28 modules.
 
 ### 1.2 Select Your Industry Profile
 At the top of the sidebar, choose:
-- **Manufacturing / FMCG** (default — all 26 modules active)
+- **Manufacturing / FMCG** (default — all 28 modules active)
 - **IT Services** (disables Inventory and Contract Labour modules)
 - **Healthcare / Pharma** (30-day expiry threshold)
 - **Retail** (multi-slab GST focus)
@@ -133,4 +133,4 @@ The SQLite file is at `data/audit.db`. Simply copy it for backup.
 
 ---
 
-*This guide covers operation of all 26 modules. For architecture decisions, see PROJECT_BLUEPRINT.md.*
+*This guide covers operation of all 28 modules. For architecture decisions, see PROJECT_BLUEPRINT.md.*
