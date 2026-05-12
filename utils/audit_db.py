@@ -195,6 +195,11 @@ def init_audit_db():
         )
     """)
 
+    # Legacy DBs: sampling_runs may exist without engagement_id
+    _sr_cols = [r[1] for r in cursor.execute("PRAGMA table_info(sampling_runs)").fetchall()]
+    if _sr_cols and "engagement_id" not in _sr_cols:
+        cursor.execute("ALTER TABLE sampling_runs ADD COLUMN engagement_id INTEGER")
+
     # 10. Evidence Files (Audit-grade trail)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS evidence_files (
@@ -412,6 +417,7 @@ def save_sampling_run(run_name: str, population_size: int, sample_size: int,
                      method: str, confidence_level: float = 0.95,
                      materiality_threshold: float = None, engagement_id: int = None):
     """Save a statistical sampling run to the database."""
+    init_audit_db()
     conn = sqlite3.connect("data/audit.db")
     cursor = conn.cursor()
     cursor.execute("""

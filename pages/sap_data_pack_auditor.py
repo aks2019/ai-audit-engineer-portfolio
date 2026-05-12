@@ -5,6 +5,7 @@ from datetime import datetime
 import sys
 from pathlib import Path
 import hashlib
+import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from checks.sap import (
@@ -15,17 +16,31 @@ from checks.sap import (
 from utils.audit_db import (
     init_audit_db,
     stage_findings,
+    load_draft_findings,
+    confirm_draft_findings,
+    discard_draft_findings,
 )
 from utils.audit_page_helpers import (
     render_engagement_selector,
     get_active_engagement_id,
     render_rag_report_section,
-    render_draft_review_section,
 )
 
 st.set_page_config(page_title="SAP Data Pack Auditor", page_icon="📦", layout="wide")
 
 PAGE_KEY = "sap_data_pack"
+MODULE_NAME = "SAP Data Pack Auditor"
+
+
+def _normalize_risk_band(sev) -> str:
+    x = str(sev or "MEDIUM").strip().upper()
+    if x in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+        return x
+    if x in ("SEVERE", "C"):
+        return "CRITICAL"
+    return "MEDIUM"
+
+
 render_engagement_selector(PAGE_KEY)
 
 # ── SESSION STATE ──────────────────────────────────────────────────
@@ -39,6 +54,12 @@ if "sap_all_issues" not in st.session_state:
     st.session_state["sap_all_issues"] = []
 if f"{PAGE_KEY}_draft_run_id" not in st.session_state:
     st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
+if f"{PAGE_KEY}_last_staged_issues_fp" not in st.session_state:
+    st.session_state[f"{PAGE_KEY}_last_staged_issues_fp"] = None
+if f"{PAGE_KEY}_draft_row_sel" not in st.session_state:
+    st.session_state[f"{PAGE_KEY}_draft_row_sel"] = {}
+if f"{PAGE_KEY}_row_sel_run_id" not in st.session_state:
+    st.session_state[f"{PAGE_KEY}_row_sel_run_id"] = None
 if "sap_column_maps" not in st.session_state:
     st.session_state["sap_column_maps"] = {}
 
@@ -238,6 +259,9 @@ if upload_method == "Single File (select pack type)":
                 st.session_state["sap_report"] = {}
                 st.session_state["sap_all_issues"] = []
                 st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
+                st.session_state[f"{PAGE_KEY}_last_staged_issues_fp"] = None
+                st.session_state[f"{PAGE_KEY}_draft_row_sel"] = {}
+                st.session_state[f"{PAGE_KEY}_row_sel_run_id"] = None
 
         except Exception as e:
             st.error(f"Failed to read file: {e}")
@@ -303,6 +327,9 @@ else:
             st.session_state["sap_report"] = {}
             st.session_state["sap_all_issues"] = []
             st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
+            st.session_state[f"{PAGE_KEY}_last_staged_issues_fp"] = None
+            st.session_state[f"{PAGE_KEY}_draft_row_sel"] = {}
+            st.session_state[f"{PAGE_KEY}_row_sel_run_id"] = None
 
 # ── STEP 2: Loaded Packs Summary ──────────────────────────────────
 if st.session_state["sap_packs"]:
@@ -340,6 +367,9 @@ if st.session_state["sap_packs"]:
             st.session_state["sap_report"] = {}
             st.session_state["sap_all_issues"] = []
             st.session_state[f"{PAGE_KEY}_draft_run_id"] = None
+            st.session_state[f"{PAGE_KEY}_last_staged_issues_fp"] = None
+            st.session_state[f"{PAGE_KEY}_draft_row_sel"] = {}
+            st.session_state[f"{PAGE_KEY}_row_sel_run_id"] = None
             st.rerun()
 
     if run_analysis:
@@ -357,55 +387,90 @@ if st.session_state["sap_packs"]:
                     all_issues.append(issue)
             st.session_state["sap_all_issues"] = all_issues
 
-            # Generate stable run_id based on uploaded files
+            # Stable ordering for fingerprint (avoid spurious re-stage if iteration order differs)
+            issues_for_fp = sorted(
+                all_issues,
+                key=lambda x: (
+                    str(x.get("pack_type", "")),
+                    str(x.get("type", "")),
+                    str(x.get("vendor") or x.get("customer") or x.get("user") or ""),
+                    str(x.get("description", ""))[:120],
+                ),
+            )
+
+            # Generate stable run_id based on uploaded files (version suffix bypasses stale dedupe windows)
             file_bytes = b"".join([d["df"].to_csv(index=False).encode() for d in st.session_state["sap_packs"].values()])
-            file_run_id = hashlib.sha256(file_bytes).hexdigest()[:12]
+            file_run_id = f"{hashlib.sha256(file_bytes).hexdigest()[:12]}:sap-v3"
+
+            # Fingerprint of analysis output — prevents duplicate DB inserts on every "Analyze All" click
+            issues_fp = hashlib.sha256(
+                json.dumps(issues_for_fp, sort_keys=True, default=str).encode("utf-8", errors="replace")
+            ).hexdigest()[:20]
+            eng_id = get_active_engagement_id(PAGE_KEY)
+            composite_fp = hashlib.sha256(f"{issues_fp}|{eng_id}".encode()).hexdigest()[:24]
 
             # Stage findings using the draft workflow (Maker-Checker)
             if all_issues:
                 init_audit_db()
 
-                staged_rows = []
-                for issue in all_issues:
-                    entity_name = issue.get("vendor") or issue.get("customer") or issue.get("user") or issue.get("asset") or issue.get("material") or "Unknown"
-                    pack_type = issue.get("pack_type", "UNKNOWN")
-                    issue_type = issue.get("type", "Unknown")
+                already_fp = st.session_state.get(f"{PAGE_KEY}_last_staged_issues_fp")
+                if already_fp == composite_fp:
+                    st.session_state[f"{PAGE_KEY}_draft_run_id"] = file_run_id
+                    st.info(
+                        "Draft findings **already staged** for this analysis result — skipped inserting duplicates. "
+                        "Scroll to **Review & Confirm Findings**, or **Clear All Packs** and re-upload if you need a clean run."
+                    )
+                else:
+                    staged_rows = []
+                    for issue in all_issues:
+                        entity_name = issue.get("vendor") or issue.get("customer") or issue.get("user") or issue.get("asset") or issue.get("material") or "Unknown"
+                        pack_type = issue.get("pack_type", "UNKNOWN")
+                        issue_type = issue.get("type", "Unknown")
+                        ref_key = f"{pack_type}|{issue_type}|{entity_name}|{issue.get('description', '')}|{issue.get('conflict', '')}"
+                        # Deterministic ref so SQLite dedupe works across reruns / identical issues
+                        src_ref = f"{PAGE_KEY}-{hashlib.sha256(ref_key.encode('utf-8', errors='replace')).hexdigest()[:24]}"
 
-                    staged_rows.append({
-                        "area": f"SAP-{pack_type}",
-                        "checklist_ref": f"SAP {pack_type} Audit / Companies Act Schedule III",
-                        "finding": (
-                            f"[{pack_type}] {issue_type} — "
-                            f"{issue.get('description', issue.get('conflict', ''))} | "
-                            f"Entity: {entity_name}"
-                        ),
-                        "amount_at_risk": float(issue.get("amount", 0)),
-                        "vendor_name": str(entity_name),
-                        "risk_band": issue.get("severity", "MEDIUM"),
-                        "finding_date": datetime.utcnow().strftime("%Y-%m-%d"),
-                        "period": datetime.utcnow().strftime("%Y-%m"),
-                        "company_code": "HQ",
-                    })
+                        staged_rows.append({
+                            "area": f"SAP-{pack_type}",
+                            "checklist_ref": f"SAP {pack_type} Audit / Companies Act Schedule III",
+                            "finding": (
+                                f"[{pack_type}] {issue_type} — "
+                                f"{issue.get('description', issue.get('conflict', ''))} | "
+                                f"Entity: {entity_name}"
+                            ),
+                            "amount_at_risk": float(issue.get("amount", 0) or 0),
+                            "vendor_name": str(entity_name),
+                            "risk_band": _normalize_risk_band(issue.get("severity")),
+                            "finding_date": datetime.utcnow().strftime("%Y-%m-%d"),
+                            "period": datetime.utcnow().strftime("%Y-%m"),
+                            "source_row_ref": src_ref,
+                        })
 
-                all_flagged = pd.DataFrame(staged_rows)
-                source_filename = ", ".join([d["filename"] for d in st.session_state["sap_packs"].values()])
+                    all_flagged = pd.DataFrame(staged_rows)
+                    source_filename = ", ".join([d["filename"] for d in st.session_state["sap_packs"].values()])
 
-                staged = stage_findings(
-                    all_flagged,
-                    module_name="SAP Data Pack Auditor",
-                    run_id=file_run_id,
-                    period=datetime.utcnow().strftime("%Y-%m"),
-                    source_file_name=source_filename,
-                    engagement_id=get_active_engagement_id(PAGE_KEY),
-                )
-                st.session_state[f"{PAGE_KEY}_draft_run_id"] = file_run_id
+                    staged = stage_findings(
+                        all_flagged,
+                        module_name=MODULE_NAME,
+                        run_id=file_run_id,
+                        period=datetime.utcnow().strftime("%Y-%m"),
+                        source_file_name=source_filename,
+                        engagement_id=get_active_engagement_id(PAGE_KEY),
+                    )
+                    st.session_state[f"{PAGE_KEY}_draft_run_id"] = file_run_id
+                    st.session_state[f"{PAGE_KEY}_last_staged_issues_fp"] = composite_fp
 
-                st.success(
-                    f"✅ **{staged} exception(s) staged for your review.** "
-                    "Nothing has been added to the official audit trail yet. "
-                    "Scroll down to **Review & Confirm Findings** to approve or discard."
-                )
+                    st.success(
+                        f"✅ **{staged} exception(s) staged for your review** (of **{len(all_flagged)}** detected). "
+                        "Nothing has been added to the official audit trail yet. "
+                        "Scroll down to **Review & Confirm Findings** to approve or discard."
+                    )
+                    if staged < len(all_flagged):
+                        st.warning(
+                            f"**{len(all_flagged) - staged}** row(s) skipped — identical draft/confirmed finding exists (dedupe)."
+                        )
             else:
+                st.session_state[f"{PAGE_KEY}_last_staged_issues_fp"] = None
                 st.success("✅ No issues detected across all data packs. No findings to stage.")
 
     # ── STEP 4: Display Results ────────────────────────────────────
@@ -423,6 +488,13 @@ if st.session_state["sap_packs"]:
         mc3.metric("🟠 Medium", summary.get("medium_issues", 0))
         mc4.metric("🟡 Low", summary.get("low_issues", 0))
         st.caption(f"Report generated: {report.get('report_date', '')}")
+
+        all_issues_tbl = st.session_state.get("sap_all_issues") or []
+        if all_issues_tbl:
+            st.divider()
+            st.subheader("🚨 Exception table — consolidated SAP data pack findings (all packs)")
+            st.caption("Rows mirror automated checks across uploaded extracts; confirm below to post to the official trail.")
+            st.dataframe(pd.DataFrame(all_issues_tbl), use_container_width=True, hide_index=True)
 
         st.divider()
 
@@ -541,17 +613,146 @@ if st.session_state["sap_packs"]:
         render_rag_report_section(
             PAGE_KEY,
             flagged_df=flagged_df if not flagged_df.empty else None,
-            module_name="SAP Data Pack Auditor",
+            module_name=MODULE_NAME,
         )
-
-        # ── REVIEW & CONFIRM FINDINGS (Maker-Checker) ──────────────
-        render_draft_review_section(PAGE_KEY, "SAP Data Pack Auditor")
 
 else:
     st.info(
         "👆 Upload one or more SAP data pack extracts above to begin. "
         "Refer to the sidebar for expected column formats and required T-codes."
     )
+
+# ── REVIEW & CONFIRM FINDINGS (Maker-Checker) ─────────────────────
+current_run_id = st.session_state.get(f"{PAGE_KEY}_draft_run_id")
+if current_run_id:
+    st.divider()
+    st.subheader("Review & Confirm Findings")
+    st.caption(
+        "Use the Select column in the table to confirm/discard. "
+        "**Audit Report Centre / Audit Committee Pack** only include findings after you confirm them."
+    )
+
+    drafts = load_draft_findings(
+        run_id=current_run_id,
+        module_name=MODULE_NAME,
+        status="Draft",
+        engagement_id=get_active_engagement_id(PAGE_KEY),
+    )
+    if drafts.empty:
+        st.info("No draft exceptions pending for the current analysis run.")
+    else:
+        if st.session_state.get(f"{PAGE_KEY}_row_sel_run_id") != current_run_id:
+            st.session_state[f"{PAGE_KEY}_draft_row_sel"] = {}
+            st.session_state[f"{PAGE_KEY}_row_sel_run_id"] = current_run_id
+
+        row_sel = st.session_state[f"{PAGE_KEY}_draft_row_sel"]
+        ids_set = set(int(x) for x in drafts["id"].tolist())
+        for k in list(row_sel.keys()):
+            if int(k) not in ids_set:
+                del row_sel[k]
+
+        st.caption(f"**{len(drafts)} draft exception(s)** pending review.")
+        c_sel1, c_sel2, c_sel3 = st.columns([1, 1, 2])
+        with c_sel1:
+            if st.button("Select all in table", use_container_width=True, key=f"{PAGE_KEY}_sel_all_btn"):
+                for i in drafts["id"].astype(int):
+                    row_sel[int(i)] = True
+                st.session_state[f"{PAGE_KEY}_draft_row_sel"] = row_sel
+                st.rerun()
+        with c_sel2:
+            if st.button("Clear row selection", use_container_width=True, key=f"{PAGE_KEY}_sel_clear_btn"):
+                st.session_state[f"{PAGE_KEY}_draft_row_sel"] = {}
+                st.rerun()
+
+        review_df = drafts[["id", "area", "vendor_name", "finding", "amount_at_risk", "risk_band"]].copy()
+        review_df.insert(0, "select", review_df["id"].map(lambda i: bool(row_sel.get(int(i), False))))
+
+        edited = st.data_editor(
+            review_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "select": st.column_config.CheckboxColumn("Select"),
+                "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
+                "area": st.column_config.TextColumn("Area", disabled=True),
+                "vendor_name": st.column_config.TextColumn("Entity", disabled=True),
+                "finding": st.column_config.TextColumn("Finding (editable)", width="large"),
+                "amount_at_risk": st.column_config.NumberColumn("Amount at Risk", format="%.0f"),
+                "risk_band": st.column_config.SelectboxColumn(
+                    "Risk Band",
+                    options=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                ),
+            },
+            key=f"{PAGE_KEY}_draft_editor_inline_select",
+        )
+
+        for _, row in edited.iterrows():
+            row_sel[int(row["id"])] = bool(row.get("select", False))
+        st.session_state[f"{PAGE_KEY}_draft_row_sel"] = row_sel
+
+        selected_ids = edited.loc[edited["select"] == True, "id"].astype(int).tolist()
+        confirmed_by = st.text_input(
+            "Confirmed / Reviewed by (auditor name)",
+            value="Auditor",
+            key=f"{PAGE_KEY}_confirmed_by",
+        )
+
+        c_confirm, c_discard = st.columns(2)
+        with c_confirm:
+            if st.button(
+                "Confirm Selected to Official Audit Trail",
+                type="primary",
+                use_container_width=True,
+                key=f"{PAGE_KEY}_confirm_btn",
+            ):
+                if not selected_ids:
+                    st.warning("Select at least one exception in the table.")
+                else:
+                    edited_vals = {
+                        int(row["id"]): {
+                            "finding": row.get("finding", ""),
+                            "amount_at_risk": row.get("amount_at_risk", 0),
+                            "risk_band": row.get("risk_band", "MEDIUM"),
+                        }
+                        for _, row in edited.iterrows()
+                    }
+                    n = confirm_draft_findings(
+                        selected_ids,
+                        confirmed_by=confirmed_by.strip() or "Auditor",
+                        edited_values=edited_vals,
+                    )
+                    st.success(f"**{n} finding(s) confirmed** and added to the official audit trail.")
+                    st.rerun()
+
+        with c_discard:
+            discard_reason = st.text_input(
+                "Discard reason (optional)",
+                key=f"{PAGE_KEY}_discard_reason",
+            )
+            if st.button(
+                "Discard Selected (False Positives)",
+                use_container_width=True,
+                key=f"{PAGE_KEY}_discard_btn",
+            ):
+                if not selected_ids:
+                    st.warning("Select at least one exception in the table.")
+                else:
+                    n = discard_draft_findings(
+                        selected_ids,
+                        discarded_by=confirmed_by.strip() or "Auditor",
+                        reason=discard_reason or "False positive — auditor review",
+                    )
+                    st.info(f"**{n} exception(s) discarded.** They will not appear in reports.")
+                    st.rerun()
+
+        csv_draft = drafts.to_csv(index=False).encode()
+        st.download_button(
+            "Export Draft Exceptions as CSV",
+            csv_draft,
+            "draft_exceptions_sap_data_pack_auditor.csv",
+            "text/csv",
+            key=f"{PAGE_KEY}_export_drafts",
+        )
 
 st.divider()
 st.caption(

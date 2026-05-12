@@ -35,16 +35,34 @@ else:
     st.info("No previous period findings with management response yet.")
 
 # Section 2 — New Critical Observations
-st.subheader("Section 2 — New Critical Observations")
-critical = load_findings(engagement_id=active_engagement_id, risk_bands=["CRITICAL","HIGH"])
+st.subheader("Section 2 — HIGH / CRITICAL observations")
+critical = load_findings(engagement_id=active_engagement_id, risk_bands=["CRITICAL", "HIGH"])
 if not critical.empty:
     critical = critical.sort_values("amount_at_risk", ascending=False)
-    st.dataframe(critical[["area","checklist_ref","finding","amount_at_risk","risk_band"]], use_container_width=True, hide_index=True)
+    st.dataframe(critical[["area", "checklist_ref", "finding", "amount_at_risk", "risk_band"]], use_container_width=True, hide_index=True)
 else:
     st.info("No HIGH/CRITICAL findings in current period.")
 
+# Section 2b — MEDIUM/LOW (sampling, analytics, routine exceptions)
+st.subheader("Section 2b — MEDIUM / LOW (sampling & other testing)")
+st.caption(
+    "Confirmed findings below HIGH still belong in the committee pack (e.g. **Statistical Sampling** "
+    "population hits, analytics flags). Section 2 above remains escalation-focused."
+)
+other_risk = load_findings(engagement_id=active_engagement_id, risk_bands=["MEDIUM", "LOW"])
+if not other_risk.empty:
+    other_risk = other_risk.sort_values("amount_at_risk", ascending=False)
+    st.dataframe(
+        other_risk[["area", "checklist_ref", "finding", "amount_at_risk", "risk_band", "status"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+else:
+    st.info("No MEDIUM/LOW findings for this engagement.")
+
 # Section 3 — Management Response
 st.subheader("Section 3 — Management Response (Editable)")
+st.caption("Applies to **Section 2 (HIGH/CRITICAL)** items below. Track MEDIUM/LOW items in Audit Session Manager if needed.")
 if not critical.empty:
     for idx, row in critical.head(10).iterrows():
         with st.container():
@@ -74,12 +92,36 @@ if not prev.empty:
 if st.button("📥 Export Board PDF"):
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=letter)
-    y = letter[1]-50
-    c.drawString(50,y,"Audit Committee Pack"); y-=30
-    c.drawString(50,y,f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC"); y-=30
+    y = letter[1] - 50
+    c.drawString(50, y, "Audit Committee Pack")
+    y -= 30
+    c.drawString(50, y, f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC")
+    y -= 30
     if not critical.empty:
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(50, y, "Section 2 — HIGH / CRITICAL")
+        y -= 18
+        c.setFont("Helvetica", 10)
         for _, row in critical.head(20).iterrows():
-            if y<50: c.showPage(); y=letter[1]-50
-            c.drawString(50,y,f"#{row['id']} {row['area']}: {row['finding'][:80]}"); y-=15
+            if y < 50:
+                c.showPage()
+                y = letter[1] - 50
+            c.drawString(50, y, f"#{row['id']} {row['area']}: {str(row['finding'])[:80]}")
+            y -= 15
+    if not other_risk.empty:
+        y -= 10
+        if y < 80:
+            c.showPage()
+            y = letter[1] - 50
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(50, y, "Section 2b — MEDIUM / LOW (sampling & other)")
+        y -= 18
+        c.setFont("Helvetica", 10)
+        for _, row in other_risk.head(30).iterrows():
+            if y < 50:
+                c.showPage()
+                y = letter[1] - 50
+            c.drawString(50, y, f"#{row['id']} {row['area']}: {str(row['finding'])[:80]}")
+            y -= 15
     c.save()
     st.download_button("Download Board PDF", buf.getvalue(), "audit_committee_pack.pdf", "application/pdf")
