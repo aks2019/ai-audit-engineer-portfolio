@@ -18,6 +18,7 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "audit.db"
 init_audit_db()
+SNAPSHOT_PATTERNS = ("audit_backup_*.db", "audit_pre_restore_*.db")
 
 # ====================== HELPER FUNCTIONS ======================
 def get_current_engagements():
@@ -33,6 +34,44 @@ def get_current_engagements():
         ORDER BY e.created_at DESC
     """, conn)
     conn.close()
+    if not df.empty:
+        df["findings_count"] = df["findings_count"].fillna(0).astype(int)
+        df["open_findings"] = df["open_findings"].fillna(0).astype(int)
+    archive_counts = get_archive_counts_by_name()
+    if not df.empty:
+        df["archive_findings_count"] = df["name"].map(lambda name: archive_counts.get(name, {}).get("findings_count", 0))
+        df["archive_open_findings"] = df["name"].map(lambda name: archive_counts.get(name, {}).get("open_findings", 0))
+        df["findings_count"] = df.apply(
+            lambda row: row["archive_findings_count"] if row["findings_count"] == 0 and row["archive_findings_count"] else row["findings_count"],
+            axis=1,
+        )
+        df["open_findings"] = df.apply(
+            lambda row: row["archive_open_findings"] if row["open_findings"] == 0 and row["archive_open_findings"] else row["open_findings"],
+            axis=1,
+        )
+        existing_names = set(df["name"].tolist())
+    else:
+        existing_names = set()
+
+    missing_archive_rows = []
+    for name, archive in archive_counts.items():
+        if name in existing_names:
+            continue
+        missing_archive_rows.append({
+            "id": None,
+            "name": name,
+            "status": "Snapshot only",
+            "start_date": archive.get("start_date"),
+            "end_date": archive.get("end_date"),
+            "created_at": archive.get("created_at"),
+            "findings_count": archive.get("findings_count", 0),
+            "open_findings": archive.get("open_findings", 0),
+            "last_activity": archive.get("last_activity"),
+            "archive_findings_count": archive.get("findings_count", 0),
+            "archive_open_findings": archive.get("open_findings", 0),
+        })
+    if missing_archive_rows:
+        df = pd.concat([df, pd.DataFrame(missing_archive_rows)], ignore_index=True)
     return df
 
 def set_active_engagement(engagement_id: int, engagement_name: str):
@@ -49,47 +88,187 @@ def get_latest_engagement():
         return None
     return engs.iloc[0]
 
-def list_backups():
-    backups = list(DATA_DIR.glob("audit_backup_*.db"))
-    data = []
-    for b in sorted(backups, reverse=True):
-        size = b.stat().st_size / (1024*1024)  # MB
-        ts = b.stem.replace("audit_backup_", "")
-        # Extract engagement name from backup database
-        engagement_name = "Unknown"
-        try:
-            conn = sqlite3.connect(b)
-            cursor = conn.cursor()
-            # Get the most recent active engagement name from this backup
-            result = cursor.execute(
-                "SELECT name FROM audit_engagements WHERE status != 'Archived' ORDER BY created_at DESC LIMIT 1"
-            ).fetchone()
-            if result:
-                engagement_name = result[0]
-            else:
-                # Try any engagement if none are active
-                result = cursor.execute(
-                    "SELECT name FROM audit_engagements ORDER BY created_at DESC LIMIT 1"
-                ).fetchone()
-                if result:
-                    engagement_name = result[0]
+def iter_snapshot_files():
+    files = []
+    for pattern in SNAPSHOT_PATTERNS:
+        files.extend(DATA_DIR.glob(pattern))
+    return sorted(set(files), reverse=True)
+
+def get_table_columns(conn, table_name: str) -> list:
+    try:
+        return [row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+    except Exception:
+        return []
+
+def snapshot_engagement_rows(snapshot_path: Path) -> list:
+    rows = []
+    try:
+        conn = sqlite3.connect(snapshot_path)
+        conn.row_factory = sqlite3.Row
+        eng_cols = get_table_columns(conn, "audit_engagements")
+        if not eng_cols:
             conn.close()
-        except Exception:
-            engagement_name = "Unknown"
-        data.append({"filename": b.name, "timestamp": ts, "engagement_name": engagement_name, "size_mb": round(size, 2)})
+            return rows
+
+        findings_cols = get_table_columns(conn, "audit_findings")
+        count_by_eng = {}
+        if "engagement_id" in findings_cols:
+            for row in conn.execute("""
+                SELECT engagement_id, COUNT(*) as findings_count,
+                       SUM(CASE WHEN status = 'Open' THEN 1 ELSE 0 END) as open_findings,
+                       MAX(opened_at) as last_activity
+                FROM audit_findings
+                GROUP BY engagement_id
+            """):
+                count_by_eng[row["engagement_id"]] = {
+                    "findings_count": row["findings_count"] or 0,
+                    "open_findings": row["open_findings"] or 0,
+                    "last_activity": row["last_activity"],
+                }
+        else:
+            total = conn.execute("SELECT COUNT(*) FROM audit_findings").fetchone()[0] if findings_cols else 0
+            count_by_eng[None] = {"findings_count": total, "open_findings": total, "last_activity": None}
+
+        engagements = conn.execute("""
+            SELECT id, name, status, start_date, end_date, created_at
+            FROM audit_engagements
+            ORDER BY created_at DESC
+        """).fetchall()
+        conn.close()
+
+        for eng in engagements:
+            counts = count_by_eng.get(eng["id"], {"findings_count": 0, "open_findings": 0, "last_activity": None})
+            if counts["findings_count"] == 0 and eng["status"] == "Archived":
+                continue
+            rows.append({
+                "snapshot_key": f"{snapshot_path.name}|{eng['id']}",
+                "filename": snapshot_path.name,
+                "snapshot_type": "Pre-restore" if snapshot_path.name.startswith("audit_pre_restore_") else "Backup",
+                "timestamp": snapshot_path.stem.replace("audit_backup_", "").replace("audit_pre_restore_", ""),
+                "source_engagement_id": eng["id"],
+                "engagement_name": eng["name"],
+                "status": eng["status"],
+                "start_date": eng["start_date"],
+                "end_date": eng["end_date"],
+                "created_at": eng["created_at"],
+                "findings_count": counts["findings_count"],
+                "open_findings": counts["open_findings"],
+                "last_activity": counts["last_activity"],
+                "size_mb": round(snapshot_path.stat().st_size / (1024 * 1024), 2),
+            })
+    except Exception:
+        return rows
+    return rows
+
+def get_archive_counts_by_name() -> dict:
+    archive_counts = {}
+    for snapshot in iter_snapshot_files():
+        for row in snapshot_engagement_rows(snapshot):
+            if row["findings_count"] <= 0:
+                continue
+            name = row["engagement_name"]
+            existing = archive_counts.get(name)
+            if not existing or row["timestamp"] > existing["timestamp"]:
+                archive_counts[name] = row
+    return archive_counts
+
+def list_backups():
+    data = []
+    for snapshot in iter_snapshot_files():
+        data.extend(snapshot_engagement_rows(snapshot))
     return pd.DataFrame(data)
 
-def restore_backup(backup_path: str):
-    backup_file = DATA_DIR / backup_path
+def copy_table_from_snapshot(source_conn, target_conn, table_name: str, target_engagement_id: int,
+                             source_engagement_id: int = None):
+    source_cols = get_table_columns(source_conn, table_name)
+    target_cols = get_table_columns(target_conn, table_name)
+    cols = [col for col in source_cols if col in target_cols]
+    if not cols:
+        return
+
+    target_conn.execute(f"DELETE FROM {table_name}")
+    q = f"SELECT {', '.join(cols)} FROM {table_name}"
+    params = []
+    if "engagement_id" in cols and source_engagement_id is not None:
+        q += " WHERE engagement_id = ?"
+        params.append(source_engagement_id)
+
+    rows = source_conn.execute(q, params).fetchall()
+    if not rows:
+        return
+
+    placeholders = ",".join(["?"] * len(cols))
+    insert_sql = f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
+    for row in rows:
+        values = list(row)
+        if "engagement_id" in cols:
+            values[cols.index("engagement_id")] = target_engagement_id
+        target_conn.execute(insert_sql, values)
+
+def ensure_engagement_from_snapshot(source_conn, target_conn, source_engagement_id: int) -> tuple:
+    source_conn.row_factory = sqlite3.Row
+    source = source_conn.execute("""
+        SELECT name, description, start_date, end_date, created_at
+        FROM audit_engagements
+        WHERE id = ?
+    """, (source_engagement_id,)).fetchone()
+    if not source:
+        raise ValueError("Selected engagement was not found inside the snapshot.")
+
+    existing = target_conn.execute(
+        "SELECT id FROM audit_engagements WHERE name = ? ORDER BY created_at DESC LIMIT 1",
+        (source["name"],),
+    ).fetchone()
+    if existing:
+        target_id = existing[0]
+        target_conn.execute("""
+            UPDATE audit_engagements
+            SET description = ?, start_date = ?, end_date = ?, status = 'Ongoing'
+            WHERE id = ?
+        """, (source["description"], source["start_date"], source["end_date"], target_id))
+    else:
+        target_conn.execute("""
+            INSERT INTO audit_engagements (name, description, start_date, end_date, status, created_at)
+            VALUES (?, ?, ?, ?, 'Ongoing', ?)
+        """, (source["name"], source["description"], source["start_date"], source["end_date"], source["created_at"]))
+        target_id = target_conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return target_id, source["name"]
+
+def restore_backup(snapshot_key: str):
+    backup_name, source_id_text = snapshot_key.split("|", 1)
+    backup_file = DATA_DIR / backup_name
+    source_engagement_id = int(source_id_text)
     if not backup_file.exists():
-        st.error("Backup not found")
+        st.error("Snapshot not found")
         return False
-    # Backup current before restore
-    shutil.copy(DB_PATH, DATA_DIR / f"audit_pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
-    shutil.copy(backup_file, DB_PATH)
-    latest = get_latest_engagement()
-    if latest is not None:
-        set_active_engagement(int(latest["id"]), str(latest["name"]))
+
+    pre_restore = DATA_DIR / f"audit_pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+    shutil.copy(DB_PATH, pre_restore)
+
+    source_conn = sqlite3.connect(backup_file)
+    target_conn = sqlite3.connect(DB_PATH)
+    try:
+        target_conn.execute("BEGIN")
+        target_id, target_name = ensure_engagement_from_snapshot(source_conn, target_conn, source_engagement_id)
+        target_conn.execute("UPDATE audit_engagements SET status = 'Archived' WHERE id != ?", (target_id,))
+
+        copy_table_from_snapshot(source_conn, target_conn, "audit_findings", target_id, source_engagement_id)
+        copy_table_from_snapshot(source_conn, target_conn, "draft_audit_findings", target_id, source_engagement_id)
+        copy_table_from_snapshot(source_conn, target_conn, "workflow_history", target_id)
+        copy_table_from_snapshot(source_conn, target_conn, "management_responses", target_id)
+        copy_table_from_snapshot(source_conn, target_conn, "audit_kpi", target_id, source_engagement_id)
+        copy_table_from_snapshot(source_conn, target_conn, "sampling_runs", target_id, source_engagement_id)
+
+        target_conn.commit()
+        set_active_engagement(target_id, target_name)
+    except Exception as exc:
+        target_conn.rollback()
+        st.error(f"Restore failed: {exc}")
+        return False
+    finally:
+        source_conn.close()
+        target_conn.close()
+
     return True
 
 # ====================== MAIN UI ======================
@@ -100,50 +279,63 @@ with tab1:
     df_current = get_current_engagements()
     if not df_current.empty:
         active_id = st.session_state.get(ACTIVE_ENGAGEMENT_ID_KEY)
-        ids = df_current["id"].tolist()
+        selectable = df_current[df_current["id"].notna()].copy()
+        ids = selectable["id"].astype(int).tolist()
         default_index = ids.index(active_id) if active_id in ids else 0
-        selected_id = st.selectbox(
-            "Active Engagement for Detection Pages",
-            ids,
-            index=default_index,
-            format_func=lambda i: df_current.loc[df_current["id"] == i, "name"].iloc[0],
-        )
-        selected_name = df_current.loc[df_current["id"] == selected_id, "name"].iloc[0]
-        set_active_engagement(selected_id, selected_name)
-        st.success(f"Active engagement: {selected_name} (ID {selected_id})")
+        if ids:
+            selected_id = st.selectbox(
+                "Active Engagement for Detection Pages",
+                ids,
+                index=default_index,
+                format_func=lambda i: selectable.loc[selectable["id"] == i, "name"].iloc[0],
+            )
+            selected_name = selectable.loc[selectable["id"] == selected_id, "name"].iloc[0]
+            set_active_engagement(selected_id, selected_name)
+            st.success(f"Active engagement: {selected_name} (ID {selected_id})")
+        else:
+            st.info("Only archived snapshots are available. Restore one before selecting an active engagement.")
         st.dataframe(df_current, use_container_width=True, hide_index=True)
     else:
         st.info("No audit engagements yet. Start one from Backup & Restore.")
 
 with tab2:
-    st.subheader("Saved Audit Engagements (Backups)")
+    st.subheader("Saved Audit Engagement Snapshots")
     df_backups = list_backups()
     
     if not df_backups.empty:
         st.dataframe(df_backups, use_container_width=True, column_config={
-            "filename": st.column_config.TextColumn("Backup File"),
+            "snapshot_key": None,
+            "filename": st.column_config.TextColumn("Snapshot File"),
+            "snapshot_type": st.column_config.TextColumn("Type"),
             "engagement_name": st.column_config.TextColumn("Engagement Name"),
             "timestamp": st.column_config.TextColumn("Timestamp"),
+            "findings_count": st.column_config.NumberColumn("Findings"),
+            "open_findings": st.column_config.NumberColumn("Open"),
             "size_mb": st.column_config.NumberColumn("Size (MB)", format="%.2f")
         })
         
         col1, col2 = st.columns([3,1])
         with col1:
-            # Create a mapping for display - show engagement name + timestamp
-            backup_options = df_backups["filename"].tolist()
-            backup_display = {row["filename"]: f"{row['engagement_name']} ({row['timestamp']})" for _, row in df_backups.iterrows()}
+            backup_options = df_backups["snapshot_key"].tolist()
+            backup_display = {
+                row["snapshot_key"]: (
+                    f"{row['engagement_name']} | {row['snapshot_type']} | "
+                    f"{row['timestamp']} | {row['findings_count']} finding(s)"
+                )
+                for _, row in df_backups.iterrows()
+            }
             selected_backup = st.selectbox(
-                "Select backup to restore",
+                "Select snapshot to restore",
                 backup_options,
                 format_func=lambda x: backup_display.get(x, x)
             )
         with col2:
-            if st.button("🔄 Restore this Engagement", type="primary", use_container_width=True):
+            if st.button("Restore this Engagement", type="primary", use_container_width=True):
                 if restore_backup(selected_backup):
-                    st.success(f"✅ Restored {selected_backup} as active engagement")
+                    st.success("Snapshot restored as active engagement")
                     st.rerun()
     else:
-        st.info("No backups yet. Start a new engagement to create one.")
+        st.info("No snapshots yet. Start a new engagement or restore an older pre-restore snapshot.")
 
     # Start New Engagement
     st.divider()
