@@ -145,22 +145,35 @@ except Exception as e:
     st.sidebar.warning(f"Navigation registry could not be loaded: {e}")
 
 phases = nav_registry.get("phases", [])
-for i, phase in enumerate(phases):
-    st.sidebar.markdown(f"**{phase.get('label', f'Phase {i+1}') }**")
-    for item in phase.get("items", []):
-        page = item["page"]
-        label = item.get("label", page)
+st.sidebar.markdown("### Main Pages")
+st.sidebar.page_link("app.py", label="Home Dashboard")
 
+visible_phases = []
+for i, phase in enumerate(phases):
+    visible_items = []
+    for item in phase.get("items", []):
         module_id = item.get("module_id")
         if module_id and not is_page_enabled(module_id):
             continue
+        visible_items.append(item)
+    if visible_items:
+        visible_phases.append({**phase, "items": visible_items, "_index": i})
 
-        permission_key = item.get("permission_key")
-        disabled = bool(permission_key) and not has_permission(st.session_state["current_user"], permission_key)
-        st.sidebar.page_link(page, label=label, disabled=disabled)
+if visible_phases:
+    phase_labels = [phase.get("label", f"Phase {phase['_index'] + 1}") for phase in visible_phases]
+    selected_phase_label = st.sidebar.selectbox("Filter menu by workstream", phase_labels, key="sidebar_phase_filter")
+    selected_phase = visible_phases[phase_labels.index(selected_phase_label)]
 
-    if i < len(phases) - 1:
-        st.sidebar.divider()
+    page_labels = [item.get("label", item["page"]) for item in selected_phase.get("items", [])]
+    selected_page_label = st.sidebar.selectbox("Select page", page_labels, key="sidebar_page_filter")
+    selected_item = selected_phase["items"][page_labels.index(selected_page_label)]
+    permission_key = selected_item.get("permission_key")
+    disabled = bool(permission_key) and not has_permission(st.session_state["current_user"], permission_key)
+
+    if disabled:
+        st.sidebar.warning("Your current role cannot open this page.")
+    elif st.sidebar.button("Open selected page", type="primary", use_container_width=True):
+        st.switch_page(selected_item["page"])
 
 # Role Badge
 st.sidebar.divider()
@@ -187,20 +200,231 @@ with st.sidebar.expander("📚 SAP T-Code Reference"):
 
 # ── COVER PAGE ─────────────────────────────────────────────────────
 
-# Hero banner
+# Dashboard visual system. Uses Streamlit theme variables so light/dark mode is preserved.
 st.markdown("""
-<div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); padding: 2rem; border-radius: 12px; margin-bottom: 1.5rem;">
-    <h1 style="color: white; margin: 0; font-size: 2.5rem;">🚀 SARVAGYA - AI Audit Engineer</h1>
-    <p style="color: #dbeafe; margin-top: 0.5rem; font-size: 1.2rem;">
-        Internal Audit Intelligence Platform — <strong>100% Population Testing</strong> | 
-        <strong>Cloud & Local Ready</strong> | <strong>26 Audit Modules</strong>
-    </p>
-    <p style="color: #93c5fd; margin-top: 0.3rem; font-size: 0.95rem;">
-        Created by <strong>Ashok Kumar Sharma</strong> | 
-        <a href="https://github.com/aks2019/ai-audit-engineer-portfolio" style="color: #93c5fd;">GitHub</a> | 
-        <a href="https://aiauditengineer.onrender.com" style="color: #93c5fd;">Live Deploy</a>
-    </p>
-</div>
+<style>
+    :root {
+        --audit-border: rgba(125, 125, 125, 0.22);
+        --audit-teal: #0e7490;
+        --audit-blue: #2563eb;
+        --audit-amber: #d97706;
+        --audit-green: #059669;
+    }
+    [data-testid="stSidebar"] {
+        background:
+            linear-gradient(180deg, rgba(14, 116, 144, 0.12), rgba(37, 99, 235, 0.08) 42%, rgba(5, 150, 105, 0.08)),
+            var(--secondary-background-color);
+        border-right: 1px solid var(--audit-border);
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        letter-spacing: 0;
+    }
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] {
+        padding: 6px 0 2px 0;
+    }
+    [data-testid="stSidebar"] div[data-testid="stExpander"] {
+        border: 1px solid var(--audit-border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+    }
+    .audit-hero {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--audit-border);
+        border-radius: 10px;
+        padding: 30px 32px;
+        margin-bottom: 18px;
+        background:
+            radial-gradient(circle at 92% 12%, rgba(217, 119, 6, 0.18), transparent 28%),
+            linear-gradient(135deg, rgba(14, 116, 144, 0.18), rgba(37, 99, 235, 0.12) 55%, rgba(5, 150, 105, 0.12)),
+            var(--background-color);
+    }
+    .audit-hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.8fr);
+        gap: 22px;
+        align-items: center;
+    }
+    .audit-kicker {
+        margin: 0 0 9px 0;
+        color: var(--audit-teal);
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0;
+        text-transform: uppercase;
+    }
+    .audit-title {
+        margin: 0;
+        color: var(--text-color);
+        font-size: 2.55rem;
+        line-height: 1.04;
+        letter-spacing: 0;
+        font-weight: 780;
+    }
+    .audit-subtitle {
+        margin: 13px 0 0 0;
+        color: var(--text-color);
+        opacity: 0.8;
+        font-size: 1.04rem;
+        max-width: 960px;
+    }
+    .audit-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    .audit-pill {
+        border: 1px solid var(--audit-border);
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: var(--secondary-background-color);
+        color: var(--text-color);
+        font-size: 0.84rem;
+    }
+    .hero-stack {
+        border: 1px solid var(--audit-border);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 14px;
+    }
+    .hero-stack div {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 10px 2px;
+        border-bottom: 1px solid rgba(125, 125, 125, 0.18);
+        color: var(--text-color);
+        font-size: 0.9rem;
+    }
+    .hero-stack div:last-child { border-bottom: 0; }
+    .hero-stack strong { color: var(--audit-teal); }
+    .section-band {
+        border: 1px solid var(--audit-border);
+        border-radius: 10px;
+        padding: 22px;
+        margin: 20px 0;
+    }
+    .band-teal {
+        background: linear-gradient(135deg, rgba(14, 116, 144, 0.13), rgba(14, 116, 144, 0.04)), var(--background-color);
+    }
+    .band-blue {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.035)), var(--background-color);
+    }
+    .band-green {
+        background: linear-gradient(135deg, rgba(5, 150, 105, 0.13), rgba(217, 119, 6, 0.05)), var(--background-color);
+    }
+    .band-heading {
+        margin-bottom: 16px;
+    }
+    .band-heading span {
+        display: inline-block;
+        color: var(--audit-teal);
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0;
+        margin-bottom: 4px;
+    }
+    .band-heading h2 {
+        margin: 0;
+        color: var(--text-color);
+        font-size: 1.28rem;
+        letter-spacing: 0;
+    }
+    .band-heading p {
+        margin: 7px 0 0 0;
+        color: var(--text-color);
+        opacity: 0.74;
+        max-width: 900px;
+    }
+    .audit-grid {
+        display: grid;
+        gap: 14px;
+    }
+    .audit-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .audit-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .audit-panel {
+        border: 1px solid var(--audit-border);
+        border-radius: 8px;
+        padding: 17px 17px 15px 17px;
+        height: 100%;
+        background: var(--secondary-background-color);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.035);
+    }
+    .audit-panel h3 {
+        margin: 0 0 8px 0;
+        color: var(--text-color);
+        font-size: 1.01rem;
+        letter-spacing: 0;
+    }
+    .audit-panel p {
+        margin: 0;
+        color: var(--text-color);
+        opacity: 0.76;
+        font-size: 0.9rem;
+        line-height: 1.45;
+    }
+    .audit-line { border-left: 4px solid var(--audit-teal); }
+    .audit-line-blue { border-left-color: var(--audit-blue); }
+    .audit-line-amber { border-left-color: var(--audit-amber); }
+    .audit-line-green { border-left-color: var(--audit-green); }
+    .flow-step {
+        border: 1px solid var(--audit-border);
+        border-radius: 8px;
+        padding: 15px;
+        background: var(--secondary-background-color);
+        height: 100%;
+    }
+    .flow-step strong {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--text-color);
+    }
+    .flow-step span {
+        color: var(--text-color);
+        opacity: 0.74;
+        font-size: 0.88rem;
+    }
+    @media (max-width: 920px) {
+        .audit-hero-grid,
+        .audit-grid.three,
+        .audit-grid.four {
+            grid-template-columns: 1fr;
+        }
+        .audit-title { font-size: 2rem; }
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<section class="audit-hero">
+    <div class="audit-hero-grid">
+        <div>
+            <p class="audit-kicker">Audit OS May-2026</p>
+            <h1 class="audit-title">SARVAGYA - AI Audit Engineer</h1>
+            <p class="audit-subtitle">
+                A practical command center for engagement-scoped detection, maker-checker finding review,
+                policy-grounded RAG analysis, SAP data-pack testing, and management-ready reporting.
+            </p>
+            <div class="audit-strip">
+                <span class="audit-pill">100% population testing</span>
+                <span class="audit-pill">Engagement-linked findings</span>
+                <span class="audit-pill">Draft to review to confirm workflow</span>
+                <span class="audit-pill">Policy RAG + standards registry</span>
+                <span class="audit-pill">SAP, finance, compliance, ITGC</span>
+            </div>
+        </div>
+        <aside class="hero-stack">
+            <div><span>Core idea</span><strong>Audit OS</strong></div>
+            <div><span>Evidence flow</span><strong>Upload to finding</strong></div>
+            <div><span>AI layer</span><strong>RAG + analytics</strong></div>
+            <div><span>Output</span><strong>Board-ready packs</strong></div>
+        </aside>
+    </div>
+</section>
 """, unsafe_allow_html=True)
 
 # Initialize all core tables (idempotent — safe on every startup)
@@ -208,7 +432,7 @@ if "audit_system_initialized" not in st.session_state:
     initialize_audit_system()
     st.session_state["audit_system_initialized"] = True
 
-# Live metrics from SQLite
+# Engagement link and live findings dashboard
 render_engagement_selector("home")
 active_engagement_id = get_active_engagement_id("home")
 if active_engagement_id is None:
@@ -224,133 +448,99 @@ else:
     high_findings = len(findings[findings["risk_band"] == "HIGH"]) if not findings.empty else 0
 
 m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("📁 Total Findings", total_findings)
-m2.metric("🔴 Open", open_findings)
-m3.metric("💣 Critical", critical_findings)
-m4.metric("🔶 High", high_findings)
-m5.metric("🎯 Modules", 27)
+m1.metric("Total Findings", total_findings)
+m2.metric("Open", open_findings)
+m3.metric("Critical", critical_findings)
+m4.metric("High", high_findings)
+m5.metric("Audit Modules", 27)
 
 st.divider()
 
-# Phase cards
-st.subheader("🗂️ Platform Modules")
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("""
-    <div style="background: var(--secondary-background-color); padding: 1.2rem; border-radius: 10px; border-left: 5px solid #0284c7;">
-        <h4 style="margin-top:0; color: var(--text-color);">🔍 Detection Engine</h4>
-        <p style="font-size: 0.9rem; color: var(--text-color);">
-            AI-powered detection across Payments, Inventory, Fixed Assets, Payroll, Sales, Contracts, GST/TDS, ITGC, BRS, and more.
-            Powered by IsolationForest + XGBoost ensembles with SHAP explainability.
-        </p>
-        <p style="font-size: 0.8rem; color: var(--text-color); opacity: 0.7;">13 modules (P1, P5–P14, P18–P21)</p>
+# Operating model
+st.markdown("""
+<section class="section-band band-teal">
+    <div class="band-heading">
+        <span>Operating Model</span>
+        <h2>From data upload to audit committee output</h2>
+        <p>The dashboard mirrors the actual audit flow: scope the engagement, run procedures, review exceptions, then report outcomes.</p>
     </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown("""
-    <div style="background: var(--secondary-background-color); padding: 1.2rem; border-radius: 10px; border-left: 5px solid #7c3aed;">
-        <h4 style="margin-top:0; color: var(--text-color);">🧠 Analysis & RAG</h4>
-        <p style="font-size: 0.9rem; color: var(--text-color);">
-            Policy RAG Bot with pgvector + Gemini 1.5 Pro, Dynamic Audit Builder with 5 no-code templates,
-            Financial Statement Auditor, NLP Document Intelligence, and Audit Planning Engine.
-        </p>
-        <p style="font-size: 0.8rem; color: var(--text-color); opacity: 0.7;">6 modules (P2–P4, P14, P23, P25)</p>
+    <div class="audit-grid three">
+        <div class="audit-panel audit-line">
+            <h3>Engagement Control</h3>
+            <p>Every detection page links draft findings to the active engagement selected above, keeping audit work scoped to a client, period, and workpaper context.</p>
+        </div>
+        <div class="audit-panel audit-line-blue">
+            <h3>Detection and Evidence</h3>
+            <p>Modules analyze SAP extracts, ledgers, contracts, payroll, receivables, inventory, BRS, GST/TDS, fixed assets, ITGC, and financial statement packs.</p>
+        </div>
+        <div class="audit-panel audit-line-amber">
+            <h3>Review and Reporting</h3>
+            <p>Exceptions are staged for auditor review before entering the official trail, then flow into workflow, risk dashboards, committee packs, and KPI reporting.</p>
+        </div>
     </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    st.markdown("""
-    <div style="background: var(--secondary-background-color); padding: 1.2rem; border-radius: 10px; border-left: 5px solid #ea580c;">
-        <h4 style="margin-top:0; color: var(--text-color);">📊 Reporting & Governance</h4>
-        <p style="font-size: 0.9rem; color: var(--text-color);">
-            Risk Register with 5×5 heat maps, Audit Report Center with CFO-ready MIS,
-            Audit Committee Pack with editable ATR, KPI Dashboard, and Multi-Company views.
-        </p>
-        <p style="font-size: 0.8rem; color: var(--text-color); opacity: 0.7;">7 modules (P7, P15–P17, P22, P24, P26)</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.divider()
+</section>
+""", unsafe_allow_html=True)
 
 # Architecture highlights
-st.subheader("⚙️ Architecture Highlights")
-arch1, arch2, arch3, arch4 = st.columns(4)
-arch1.info("**Zero Hardcoded Columns**\n\nSAP field synonym auto-detection via `utils/column_mapper.py`")
-arch2.info("**Zero Hardcoded Compliance**\n\nGST/TDS/PF/ESI rates live in YAML — edit, no restart")
-arch3.info("**Plugin Architecture**\n\nAdd a new audit check = 1 new class. Zero page changes.")
-arch4.info("**Shared Audit Trail**\n\nSingle SQLite `data/audit.db` — all 26 modules read/write")
-
-st.divider()
+st.markdown("""
+<section class="section-band band-blue">
+    <div class="band-heading">
+        <span>Architecture Signals</span>
+        <h2>Built like an audit system, not a demo notebook</h2>
+        <p>Reusable helpers, central audit tables, role-aware navigation, and policy-grounded AI keep the platform coherent as modules grow.</p>
+    </div>
+    <div class="audit-grid four">
+        <div class="audit-panel audit-line">
+            <h3>Column Intelligence</h3>
+            <p>SAP and spreadsheet field synonyms are normalized through reusable mapping helpers.</p>
+        </div>
+        <div class="audit-panel audit-line-blue">
+            <h3>Compliance Data</h3>
+            <p>Rates and calendars are externalized in configuration instead of being buried in page code.</p>
+        </div>
+        <div class="audit-panel audit-line-green">
+            <h3>Audit Trail</h3>
+            <p>Findings, drafts, workflow, KPIs, engagements, and evidence share one SQLite audit store.</p>
+        </div>
+        <div class="audit-panel audit-line-amber">
+            <h3>Governance Ready</h3>
+            <p>RBAC, role-aware navigation, and maker-checker patterns are designed into the workflow.</p>
+        </div>
+    </div>
+</section>
+""", unsafe_allow_html=True)
 
 # Quick start guide
-st.subheader("⚠️ Quick Start")
-qs1, qs2, qs3 = st.columns(3)
-with qs1:
-    st.markdown("""
-    **1. Select Industry**  
-    Choose Manufacturing, IT, Healthcare, Retail, or Financial Services from the sidebar.
-    """)
-with qs2:
-    st.markdown("""
-    **2. Upload SAP Data**  
-    Go to any Detection module, upload your CSV/Excel, map columns, and run AI analysis.
-    """)
-with qs3:
-    st.markdown("""
-    **3. Review & Report**  
-    Findings auto-log to SQLite. Use P22 Workflow to track status, P17 for Board packs.
-    """)
-
-st.divider()
-
-# Category-wise Module Quick Reference
-st.subheader("📋 Module Quick Reference")
-mc1, mc2, mc3 = st.columns(3)
-with mc1:
-    st.markdown("""
-    **Detection (P1, P3–P6, P8–P14, P18–P22, P25)**
-    - P1: Payment Anomaly Detector
-    - P3: Dynamic Audit Builder
-    - P4: Financial Statement Auditor
-    - P5: BRS Reconciliation
-    - P6: Receivables & Bad Debt
-    - P8: GST/TDS Compliance
-    - P9: Related-Party Monitor
-    - P10: Duplicate Invoice Detector
-    - P11: Inventory Anomaly
-    - P12: Fixed Asset Auditor
-    - P13: Expense Claim Auditor
-    - P18: Payroll Audit
-    - P19: Sales Revenue Auditor
-    - P20: ITGC & SAP Access
-    - P21: SAP Data Pack Auditor
-    - P22: Contract Management
-    - P25: Statistical Sampling
-    """)
-with mc2:
-    st.markdown("""
-    **Analysis & RAG (P2, P14, P23)**
-    - P2: Policy RAG Bot
-    - P14: Audit Planning Engine
-    - P23: NLP Document Intelligence
-    """)
-with mc3:
-    st.markdown("""
-    **Reporting & Governance (P7, P15–P17, P24, P26)**
-    - P7: Unified Dashboard
-    - P15: Risk Register
-    - P16: Audit Report Center
-    - P17: Audit Committee Pack
-    - P24: Multi-Company View
-    - P26: Audit KPI Dashboard
-    """)
-
-st.divider()
+st.markdown("""
+<section class="section-band band-green">
+    <div class="band-heading">
+        <span>Recommended Flow</span>
+        <h2>Use it like an audit file</h2>
+        <p>Start with scope, move through fieldwork, review what matters, then package the audit story for management.</p>
+    </div>
+    <div class="audit-grid four">
+        <div class="flow-step">
+            <strong>1. Set engagement</strong>
+            <span>Create or select an engagement, then keep it active before running detection.</span>
+        </div>
+        <div class="flow-step">
+            <strong>2. Run testing</strong>
+            <span>Upload SAP, ledger, payroll, contract, or compliance extracts in the relevant module.</span>
+        </div>
+        <div class="flow-step">
+            <strong>3. Review drafts</strong>
+            <span>Confirm valid exceptions into official findings and discard false positives.</span>
+        </div>
+        <div class="flow-step">
+            <strong>4. Report outcomes</strong>
+            <span>Use workflow, risk register, report center, KPI dashboard, and committee pack.</span>
+        </div>
+    </div>
+</section>
+""", unsafe_allow_html=True)
 
 # Footer
 st.caption("""
-**AI Audit Engineer v5.1** | Built with Streamlit, Gemini 1.5 Pro, XGBoost, SHAP, pgvector, and ReportLab.  
+**AI Audit Engineer v5.1** | Built with Streamlit, XGBoost, SHAP, pgvector, and ReportLab.  
 For architecture details see `PROJECT_BLUEPRINT.md`. For operations see `USER_GUIDE.md`.
 """)

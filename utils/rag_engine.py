@@ -67,8 +67,8 @@ def _get_llm():
     # If USE_LOCAL_LLM is explicitly set to "true", use local llama.cpp; otherwise use Gemini cloud
     if os.getenv("USE_LOCAL_LLM", "true").lower() == "true":
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(base_url="http://127.0.0.1:8080/v1", api_key="llama.cpp",
-                          model="gemma-4-E2B-it-Q4_K_M.gguf", temperature=0.7)
+        return ChatOpenAI(base_url="http://127.0.0.1:8080/v1", api_key="llama.cpp", # https://integrate.api.nvidia.com/v1 
+                          model="gemma-4-E2B-it-Q4_K_M.gguf", temperature=0.7)      # minimaxai/minimax-m2.7  
     # Otherwise, use Gemini (Cloud LLM)
     from langchain_google_genai import ChatGoogleGenerativeAI
     return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7,
