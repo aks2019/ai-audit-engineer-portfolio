@@ -63,16 +63,24 @@ def _get_vectorstore_safe():
     except Exception as e:
         return None, str(e)
 
-def _get_llm():
+#def _get_llm():
     # If USE_LOCAL_LLM is explicitly set to "true", use local llama.cpp; otherwise use Gemini cloud
-    if os.getenv("USE_LOCAL_LLM", "true").lower() == "true":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(base_url="http://127.0.0.1:8080/v1", api_key="llama.cpp", # https://integrate.api.nvidia.com/v1 
-                          model="gemma-4-E2B-it-Q4_K_M.gguf", temperature=0.7)      # minimaxai/minimax-m2.7  
-    # Otherwise, use Gemini (Cloud LLM)
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7,
-                                  google_api_key=os.getenv("GOOGLE_API_KEY"))
+    # if os.getenv("USE_LOCAL_LLM", "true").lower() == "true":
+    #     from langchain_openai import ChatOpenAI
+    #     return ChatOpenAI(base_url="http://127.0.0.1:8080/v1", api_key="llama.cpp", # https://integrate.api.nvidia.com/v1 
+    #                       model="gemma-4-E2B-it-Q4_K_M.gguf", temperature=0.7)      # minimaxai/minimax-m2.7
+    #Otherwise, use NVIDIA (Cloud LLM)
+def _get_llm():
+    return ChatOpenAI(
+        model="nvidia/nemotron-3-super-120b-a12b", # Replace with your specific Model ID
+        openai_api_key=os.getenv("NVIDIA_API_KEY"),
+        openai_api_base="https://integrate.api.nvidia.com/v1",
+        temperature=0.7
+    )  
+    # # Otherwise, use Gemini (Cloud LLM)
+    # from langchain_google_genai import ChatGoogleGenerativeAI
+    # return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7,
+    #                               google_api_key=os.getenv("GOOGLE_API_KEY"))
 
 def _get_db_path():
     """Get path to local SQLite audit database."""

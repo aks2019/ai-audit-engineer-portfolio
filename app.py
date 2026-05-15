@@ -403,7 +403,7 @@ st.markdown("""
 <section class="audit-hero">
     <div class="audit-hero-grid">
         <div>
-            <p class="audit-kicker">Audit OS May-2026</p>
+            <p class="audit-kicker">May-2026</p>
             <h1 class="audit-title">SARVAGYA - AI Audit Engineer</h1>
             <p class="audit-subtitle">
                 A practical command center for engagement-scoped detection, maker-checker finding review,
